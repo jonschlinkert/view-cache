@@ -1,1 +1,1 @@
-A
+This is include <%= a %>

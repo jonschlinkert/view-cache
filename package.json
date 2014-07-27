@@ -42,6 +42,9 @@
     "mocha": "~1.18.2"
   },
   "dependencies": {
+    "arrayify-compact": "^0.1.0",
+    "assemble-layouts": "^0.1.8",
+    "globby": "^0.1.1",
     "lodash": "^2.4.1",
     "template": "^0.2.1"
   }
