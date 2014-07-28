@@ -48,8 +48,9 @@ describe('template tags', function () {
       template.process('<%= glob("test/fixtures/*.md") %>', ctx);
       template.process('<%= glob(["test/fixtures/*.md"]) %>', ctx);
     });
+
     it('should add tags to `cache.tags`.', function () {
-      template.process('<%= log("logging tag works!") %>', ctx);
+      // template.process('<%= log("logging tag works!") %>', ctx);
     });
   });
 });

@@ -39,11 +39,13 @@ function Template(context, options) {
   this.delims = {};
   this.cache = {};
 
-  this.addDelims('default', ['<%', '%>']);
-  this.addDelims('es6', ['${', '}']);
-
   this.set('cwd', opts.cwd || process.cwd());
   this.engine = _.template || opts.engine;
+
+  this.addDelims('default', ['<%', '%>']);
+  this.addDelims('es6', ['${', '}'], {
+    interpolate: /\$\{([^\\}]*(?:\\.[^\\}]*)*)\}/g
+  });
 
   this._cache('partials', opts.partials || {});
   this._cache('layouts', opts.layouts || {});
@@ -62,12 +64,11 @@ function Template(context, options) {
  * **Example:**
  *
  * ```js
- * template.compile('{%%= foo %}', {delims: ['{%', '%}']});
+ * template.makeDelimes(['{%', '%}'], opts);
  * ```
  *
- * @param  {Array} `delimiters`
- * @param  {Object} `options`
- * @return {Object} Object of regular expressions to pass to Lo-Dash.
+ * @param  {Array} `array` Array of delimiters.
+ * @param  {Object} `options` Options to pass to [delims].
  * @api private
  */
 
@@ -86,21 +87,24 @@ Template.prototype.makeDelims = function (array, options) {
  * **Example:**
  *
  * ```js
- * template.addDelims('es6', ['${', '}']);
  * template.addDelims('curly', ['{%', '%}']);
  * template.addDelims('angle', ['<%', '%>']);
+ * template.addDelims('es6', ['${', '}'], {
+ *   // override the generated regex
+ *   interpolate: /\$\{([^\\}]*(?:\\.[^\\}]*)*)\}/g
+ * });
  * ```
  *
  * [delims]: https://github.com/jonschlinkert/delims "Generate regex for delimiters"
  *
- * @param {String} `name`
+ * @param {String} `name` The name to use for the stored delimiters.
  * @param {Array} `delimiterArray` Array of delimiter strings. See [delims] for details.
  * @param {Object} `options` Options to pass to [delims].
  * @api public
  */
 
 Template.prototype.addDelims = function (name, delimiterArray, options) {
-  var delims = this.makeDelims(delimiterArray, options);
+  var delims = _.extend({}, this.makeDelims(delimiterArray, options), options);
   this.constant(name, delims, this.delims);
   return this;
 };
