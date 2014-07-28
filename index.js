@@ -1,10 +1,36 @@
+/*!
+ * template <https://github.com/jonschlinkert/template>
+ *
+ * Copyright (c) 2014 Jon Schlinkert, contributors
+ * Licensed under the MIT License (MIT)
+ */
+
 'use strict';
 
 var _ = require('lodash');
 var Layouts = require('layouts');
 
 
-function Template(context, options) {
+/**
+ * ## Template
+ *
+ * Create a new instance of `Template`, optionally passing the default
+ * `context` and `options` to use.
+ *
+ * **Example:**
+ *
+ * ```js
+ * var Template = require('template');
+ * var template = new Template();
+ * ```
+ *
+ * @class `Template`
+ * @param {Object} `context` Context object to start with.
+ * @param {Object} `options` Options to use.
+ * @api public
+ */
+
+var Template = module.exports = function Template(context, options) {
   this.context = context || {};
   this.options = options || {};
   var opts = this.options;
@@ -17,12 +43,9 @@ function Template(context, options) {
 
   this._layouts = new Layouts(opts);
   this.defaultTags();
-}
+};
 
 
-/**
- * Constants
- */
 
 Template.prototype._cache = function(key, value) {
   this.constant(key, value, this.cache);
@@ -43,9 +66,8 @@ Template.prototype.constant = function(key, value, obj) {
   return this;
 };
 
-/**
- * Data
- */
+
+
 
 Template.prototype.context = function (key, value) {
   this.cache.tags[key] = value;
@@ -57,13 +79,28 @@ Template.prototype.data = function (key, value) {
 
 
 /**
- * Tags
+ * ## .addtag
+ *
+ * Add a partial to the tags cache (`cache.tags`).
+ *
+ * @param  {String} `key`
+ * @param  {Object} `value`
+ * @return {Template} to enable chaining.
  */
 
 Template.prototype.addTag = function (key, value) {
   this.cache.tags[key] = value;
+  return this;
 };
 
+
+/**
+ * ## .defaultTags
+ *
+ * Initialize and add default tags to the cache.
+ *
+ * @api private
+ */
 
 Template.prototype.defaultTags = function () {
   this.addTag('partial', function (name) {
@@ -77,9 +114,14 @@ Template.prototype.defaultTags = function () {
 
 
 /**
- * Partials
+ * ## .partial
+ *
+ * Add a partial to the partials cache (`cache.partials`).
+ *
+ * @param  {String} `key`
+ * @param  {Object} `value`
+ * @return {Template} to enable chaining.
  */
-
 
 Template.prototype.partial = function (key, value) {
   this.cache.partials[key] = value;
@@ -164,58 +206,3 @@ Template.prototype.process = function (str, context) {
   }
   return str;
 };
-
-
-
-var template = new Template();
-
-// console.log(template.cwd)
-
-// template.addTag('partial', require('./tags/partial')(template.partials));
-template.addTag('include', require('./tags/include'));
-template.addTag('glob', require('./tags/glob')(template));
-template.addTag('log', require('./tags/log'));
-
-template.partial('a', 'This is partial <%= a %>');
-template.partial('b', 'This is partial <%= b %>');
-template.partials({
-  c: 'This is partial <%= c %>',
-  d: 'This is partial <%= d %>'
-});
-
-var ctx = {
-  a: 'A',
-  b: 'B',
-  c: 'C',
-  d: 'D',
-  layout: 'base'
-};
-
-console.log(template.process('<%= partial("a") %>', ctx));
-console.log(template.process('<%= partial("b") %>', ctx));
-console.log(template.process('<%= partial("c") %>', ctx));
-console.log(template.process('<%= partial("d") %>', ctx));
-// console.log(template.process('<%= include("test/fixtures/a.md") %>', ctx));
-// console.log(template.process('<%= include("test/fixtures/b.md") %>', ctx));
-// console.log(template.process('<%= glob("test/fixtures/*.md") %>', ctx));
-// console.log(template.process('<%= glob(["test/fixtures/*.md"]) %>', ctx));
-
-// template.constant('a', 'b');
-
-template.layout('base', '\nbase\n{{body}}\nbase');
-template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
-template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
-template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'base'});
-
-console.log(template.layouts())
-
-
-var ctx = {
-  a: 'FIRST',
-  b: 'SECOND',
-  c: 'THIRD',
-  d: 'FOURTH',
-  layout: 'a'
-};
-var res = template.process('\n<%= partial("a") %>', ctx);
-console.log(res);

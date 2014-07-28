@@ -37,9 +37,9 @@
     "test": "mocha -R spec"
   },
   "devDependencies": {
-    "verb": "~0.2.0",
-    "chai": "~1.9.1",
-    "mocha": "~1.18.2"
+    "mocha": "~1.18.2",
+    "should": "^4.0.4",
+    "verb": "~0.2.0"
   },
   "dependencies": {
     "arrayify-compact": "^0.1.0",

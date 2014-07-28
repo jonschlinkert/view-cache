@@ -28,5 +28,5 @@ module.exports = function (template) {
     return files.map(function (filepath) {
       return include(filepath);
     }).join(opts.sep || '\n');
-  }
+  };
 };
