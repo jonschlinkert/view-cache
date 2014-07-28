@@ -1,13 +1,7 @@
 'use strict';
 
 var _ = require('lodash');
-var Layouts = require('assemble-layouts');
-var isFalsey = require('falsey');
-var delims = require('delims');
-
-var createDelim = function (str) {
-  return str.replace(/(\s*)/g, '\\s*');
-};
+var Layouts = require('layouts');
 
 
 function Template(context, options) {
@@ -23,12 +17,6 @@ function Template(context, options) {
 
   this._layouts = new Layouts(opts);
   this.defaultTags();
-
-  this.layoutStack = {};
-  this.defaultLayout = '{{ body }}';
-  // this.regex = delims(layoutOpts.delims, layoutOpts).evaluate;
-  // this.regex = createDelim(this.defaultLayout);
-  this.regex = /\{{\s*body\s*}}/;
 }
 
 
@@ -39,6 +27,7 @@ function Template(context, options) {
 Template.prototype._cache = function(key, value) {
   this.constant(key, value, this.cache);
 };
+
 
 Template.prototype.constant = function(key, value, obj) {
   var getter;
@@ -97,7 +86,11 @@ Template.prototype.partial = function (key, value) {
   return this;
 };
 
-Template.prototype.partials = function (key, value) {
+Template.prototype.partials = function (obj) {
+  if (arguments.length === 0) {
+    return this.cache.partials;
+  }
+
   var args = [].slice.call(arguments);
   _.extend.apply(_, [this.cache.partials].concat(args));
   return this;
@@ -110,77 +103,29 @@ Template.prototype.partials = function (key, value) {
 
 Template.prototype.layout = function (key, str, data) {
   this.cache.layouts[key] = {content: str, data: data || {}};
+  this._layouts.set(key, data, str);
   return this;
 };
 
 
-Template.prototype.layouts = function (key, value) {
+Template.prototype.layouts = function (obj) {
+  if (arguments.length === 0) {
+    return this.cache.layouts;
+  }
+
   var args = [].slice.call(arguments);
   _.extend.apply(_, [this.cache.layouts].concat(args));
+  // this._layouts.set(this.cache.layouts);
   return this;
 };
 
 
-Template.prototype.injectLayout = function (outer, inner) {
-  return outer.replace(this.regex, '\n' + inner + '\n');
-};
+/**
+ * Get
+ */
 
-
-Template.prototype.createStack = function (key) {
-  key = this.useLayout(key);
-  var template = null;
-  var stack = [];
-  while (key && (template = this.cache.layouts[key])) {
-    stack.unshift(key);
-    key = this.useLayout(template.data && template.data.layout);
-  }
-  return stack;
-};
-
-Template.prototype.useLayout = function (layout) {
-  if (!layout || isFalsey(layout)) {
-    return null;
-  }
-  return layout;
-};
-
-
-Template.prototype.wrap = function (str, options) {
-  var file = {
-    data: options && options.data || {},
-    content: str
-  };
-
-  var opts = _.extend({}, this.options, file.data, options);
-  var stack = this.createStack(opts.layout);
-
-  // console.log('opts', opts)
-  // console.log('stack', stack)
-
-  // Setup the object to be returned, and store file.content on `orig`
-  var results = {
-    content: this.defaultLayout
-  };
-
-  results.data = opts.data;
-  results.orig = str;
-
-  // loop over the layout stack building the context and content
-  results = stack.reduce(function (acc, key) {
-    var layout = this.cache.layouts[key];
-    acc.data = _.extend(acc.data, layout.data);
-    acc.content = this.injectLayout(acc.content, layout.content);
-    return acc;
-  }.bind(this), results);
-
-  // Pass the accumlated, final results
-  results.data = _.extend(results.data, file.data);
-  // results.content = this.injectLayout(results.content, str);
-  results.content = results.content.replace(this.regex, str);
-  if (!this.regex.test(str)) {
-    return results;
-  }
-  return results;
+Template.prototype.get = function (key) {
+  return this.cache.tags[key];
 };
 
 
@@ -189,8 +134,8 @@ Template.prototype.wrap = function (str, options) {
  * Get
  */
 
-Template.prototype.get = function (key, value) {
-  return this.cache.tags[key];
+Template.prototype.assertDelims = function (str) {
+  return str.indexOf('${') >= 0 || str.indexOf('%>') >= 0;
 };
 
 
@@ -204,10 +149,13 @@ Template.prototype.get = function (key, value) {
 
 Template.prototype.process = function (str, context) {
   var ctx = _.extend({}, this.context, context);
+  var layout = this._layouts.inject(str, ctx.layout);
+  var data = _.extend({}, ctx, layout.data);
   var original = str;
 
-  while (str.indexOf('${') >= 0 || str.indexOf('%>') >= 0) {
-    str = _.template(this.wrap(str, ctx).content, ctx, {
+  str = layout.content;
+  while (this.assertDelims(str)) {
+    str = _.template(str, data, {
       imports: this.cache.tags
     });
     if (str === original) {
@@ -235,41 +183,39 @@ template.partials({
   d: 'This is partial <%= d %>'
 });
 
-// var ctx = {
-//   a: 'A',
-//   b: 'B',
-//   c: 'C',
-//   d: 'D',
-//   layout: 'default'
-// };
+var ctx = {
+  a: 'A',
+  b: 'B',
+  c: 'C',
+  d: 'D',
+  layout: 'base'
+};
 
-// console.log(template.process('<%= partial("a") %>', ctx));
-// console.log(template.process('<%= partial("b") %>', ctx));
-// console.log(template.process('<%= partial("c") %>', ctx));
-// console.log(template.process('<%= partial("d") %>', ctx));
+console.log(template.process('<%= partial("a") %>', ctx));
+console.log(template.process('<%= partial("b") %>', ctx));
+console.log(template.process('<%= partial("c") %>', ctx));
+console.log(template.process('<%= partial("d") %>', ctx));
 // console.log(template.process('<%= include("test/fixtures/a.md") %>', ctx));
 // console.log(template.process('<%= include("test/fixtures/b.md") %>', ctx));
 // console.log(template.process('<%= glob("test/fixtures/*.md") %>', ctx));
 // console.log(template.process('<%= glob(["test/fixtures/*.md"]) %>', ctx));
 
-template.constant('a', 'b');
+// template.constant('a', 'b');
 
-template.layout('default', 'default\n{{body}}\ndefault', {layout: 'a'});
-template.layout('a', 'BEFORE <%= a %> {{body}}AFTER <%= a %>', {layout: 'b'});
-template.layout('b', 'BEFORE <%= b %> {{body}}AFTER <%= b %>', {layout: 'c'});
-template.layout('c', 'BEFORE <%= c %> {{body}}AFTER <%= c %>');
+template.layout('base', '\nbase\n{{body}}\nbase');
+template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
+template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
+template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'base'});
 
+console.log(template.layouts())
 
-// var res = template.wrap('foo', {data: {layout: 'default'}});
-// console.log(res.content)
 
 var ctx = {
   a: 'FIRST',
   b: 'SECOND',
   c: 'THIRD',
   d: 'FOURTH',
-  layout: 'default'
+  layout: 'a'
 };
-var res = template.process('<%= partial("a") %>', ctx);
-
+var res = template.process('\n<%= partial("a") %>', ctx);
 console.log(res);
