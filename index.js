@@ -276,6 +276,13 @@ Template.prototype._defaultTags = function () {
  */
 
 Template.prototype.partial = function (key, value) {
+  if (arguments.length === 1) {
+    if (typeof key === 'object') {
+      this.partials(key);
+      return this;
+    }
+    return this.cache.partials[key];
+  }
   this.cache.partials[key] = value;
   return this;
 };
@@ -316,6 +323,14 @@ Template.prototype.partials = function (/*object*/) {
  */
 
 Template.prototype.layout = function (key, str, data) {
+  if (arguments.length === 1) {
+    if (typeof key === 'object') {
+      this._layouts.set(key);
+      this.layouts(key);
+      return this;
+    }
+    return this.cache.layouts[key];
+  }
   this.cache.layouts[key] = {content: str, data: data || {}};
   this._layouts.set(key, data, str);
   return this;
@@ -387,25 +402,6 @@ Template.prototype.get = function (key) {
   return this.cache[key];
 };
 
-
-/**
- * ## ._assertDelims
- *
- * Return `true` if template delimiters exist in `str`.
- *
- * @param  {String} `str`
- * @return {Boolean}
- * @api private
- */
-
-Template.prototype._assertDelims = function (str, re) {
-  return re ? str.indexOf(re.delims[0]) !== -1 &&
-    str.indexOf(re.delims[1]) !== -1 :
-    str.indexOf('<%') !== -1 ||
-    str.indexOf('${') !== -1;
-};
-
-
 /**
  * ## .engine
  *
@@ -441,7 +437,6 @@ Template.prototype.engine = function (ext, fn, options) {
   this.engines[ext] = engine;
   return this;
 };
-
 
 
 /**
@@ -486,6 +481,24 @@ Template.prototype.render = function (str, context, settings) {
 
 
 /**
+ * ## ._assertDelims
+ *
+ * Return `true` if template delimiters exist in `str`.
+ *
+ * @param  {String} `str`
+ * @return {Boolean}
+ * @api private
+ */
+
+Template.prototype._assertDelims = function (str, re) {
+  return re ? str.indexOf(re.delims[0]) !== -1 &&
+    str.indexOf(re.delims[1]) !== -1 :
+    str.indexOf('<%') !== -1 ||
+    str.indexOf('${') !== -1;
+};
+
+
+/**
  * ## .process
  *
  * Process a template `str` with the given `context` and `settings`.
@@ -499,11 +512,15 @@ Template.prototype.render = function (str, context, settings) {
 Template.prototype.process = function (str, context, settings) {
   var ctx = _.extend({}, this.context, context);
   var delims = this.getDelims(ctx.delims || settings);
-  var original = str;
+  var original = str, layout, data = {};
 
-  var layout = this._layouts.inject(str, ctx.layout);
-  var data = _.extend({}, ctx, layout.data);
-  str = layout.content;
+  if (!ctx.layout) {
+    data = _.extend({}, ctx);
+  } else {
+    layout = this._layouts.inject(str, ctx.layout);
+    data = _.extend({}, ctx, layout.data);
+    str = layout.content;
+  }
 
   while (this._assertDelims(str, delims)) {
     str = this.render(str, data, delims);

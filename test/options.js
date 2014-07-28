@@ -13,7 +13,7 @@ var template = new Template();
 var _ = require('lodash');
 
 
-describe('.set():', function () {
+describe('template options:', function () {
   xdescribe('when templates are defined as objects:', function () {
 
   });

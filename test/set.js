@@ -5,59 +5,39 @@
  * Licensed under the MIT License (MIT)
  */
 
-'use strict';
-
 var should = require('should');
 var Template = require('..');
-var template = new Template();
 
 
-describe('.set():', function () {
-  xdescribe('when templates are defined as objects:', function () {
+describe('template set:', function () {
+  describe('.set():', function () {
+    describe('when template are defined as objects:', function () {
+      it('when template are defined as objects:', function () {
+        var template = new Template();
+        template.layout({base: {content: 'base!\n{{body}}\nbase!' }});
+        template.layout({a: {layout: 'b', content: 'A above\n{{body}}\nA below' }});
+        template.layout({b: {layout: 'c', content: 'B above\n{{body}}\nB below' }});
+        template.layout({c: {layout: 'base', content: 'C above\n{{body}}\nC below' }});
 
+        var ctx = {
+          title: 'Page!',
+          layout: 'a'
+        };
+
+        var actual = template.process('I\'m a <%= title %>', ctx);
+        var expected = [
+          'base!',
+          'C above',
+          'B above',
+          'A above',
+          'I\'m a Page!', // should not be compiled
+          'A below',
+          'B below',
+          'C below',
+          'base!'
+        ].join('\n');
+        actual.should.eql(expected);
+      });
+    });
   });
 });
-
-
-
-var template = new Template();
-
-template.partial('a', 'This is partial <%= a %>');
-template.partial('b', 'This is partial <%= b %>');
-template.partials({
-  c: 'This is partial <%= c %>',
-  d: 'This is partial <%= d %>'
-});
-
-var ctx = {
-  a: 'A',
-  b: 'B',
-  c: 'C',
-  d: 'D',
-  layout: 'base'
-};
-
-console.log(template.process('<%= partial("a") %>', ctx));
-console.log(template.process('<%= partial("b") %>', ctx));
-console.log(template.process('<%= partial("c") %>', ctx));
-console.log(template.process('<%= partial("d") %>', ctx));
-
-// template.constant('a', 'b');
-
-template.layout('base', '\nbase\n{{body}}\nbase');
-template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
-template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
-template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'base'});
-
-console.log(template.layouts())
-
-
-var ctx = {
-  a: 'FIRST',
-  b: 'SECOND',
-  c: 'THIRD',
-  d: 'FOURTH',
-  layout: 'a'
-};
-var res = template.process('\n<%= partial("a") %>', ctx);
-console.log(res);
