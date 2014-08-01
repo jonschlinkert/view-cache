@@ -15,15 +15,12 @@ var _ = require('lodash');
 
 describe('template render:', function () {
   describe('.render()', function () {
-    it('should render templates.', function () {
+    it('should render templates with lodash.', function () {
       var template = new Template();
       template.engine('tmpl', engines.lodash);
-
-      // var actual = template.render('hello <%= name %>', {name: 'Jon Schlinkert'});
-      var actual = template.render('test/fixtures/no-matter.tmpl', {name: 'Jon Schlinkert'});
-      // actual.should.be.a.string;
-      console.log(actual)
-      // actual.should.equal('hello Jon Schlinkert');
+      var actual = template.renderFile('test/fixtures/no-matter.tmpl', {name: 'Jon Schlinkert'});
+      actual.should.be.a.string;
+      actual.should.equal('hello Jon Schlinkert');
     });
   });
 });

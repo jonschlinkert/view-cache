@@ -7,6 +7,7 @@ var path = require('path');
 var isAbsolute = require('is-absolute');
 var lookup = require('lookup-path');
 var glob = require('globby');
+var _ = require('lodash');
 
 
 /**
@@ -24,9 +25,11 @@ var glob = require('globby');
  */
 
 function View(name, options) {
-  options = options || {};
+  var opts = _.extend({}, options);
   this.name = name;
-  this.defaultEngine = options.defaultEngine;
+
+  this.imports = opts.imports;
+  this.defaultEngine = opts.defaultEngine;
   var ext = this.ext = path.extname(name);
 
   if (!ext && !this.defaultEngine) {
@@ -36,11 +39,41 @@ function View(name, options) {
     name += (ext = this.ext = (this.defaultEngine[0] !== '.' ? '.' : '') + this.defaultEngine);
   }
 
-  var engines = options.engines;
-  console.log(engines)
+  this.templates = options.templates || {};
+
+  var engines = opts.engines;
   this.engine = engines[ext] || (engines[ext] = require(ext.slice(1)).__express);
   this.path = this.lookup(name);
 }
+
+
+/**
+ * Set `view` by the given `name`.
+ *
+ * @param {String} `name`
+ * @param {Object} `view`
+ * @api public
+ */
+
+View.prototype.set = function (name, view) {
+  this.templates[name] = view;
+};
+
+
+/**
+ * Get a template by `name`.
+ *
+ * @param {String} `name`
+ * @return {Object}
+ * @api public
+ */
+
+View.prototype.get = function (name) {
+  if (!name) {
+    return this.templates;
+  }
+  return this.templates[name];
+};
 
 
 /**
@@ -64,9 +97,10 @@ View.prototype.lookup = function (filepath, cwd) {
  * @api private
  */
 
-View.prototype.render = function (options) {
+View.prototype.renderFile = function (options) {
   var str = fs.readFileSync(this.path, 'utf8');
-  return this.engine(str, options);
+
+  return this.engine.render(str, options);
 };
 
 
