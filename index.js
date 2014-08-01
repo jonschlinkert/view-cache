@@ -8,13 +8,13 @@
 'use strict';
 
 var _ = require('lodash');
-var fs = require('fs');
 var path = require('path');
 var glob = require('globby');
 var Layouts = require('layouts');
 var isAbsolute = require('is-absolute');
 var Delimiters = require('delims');
 var delimiters = new Delimiters();
+var View = require('./view');
 
 
 var noop = function (str) {
@@ -26,6 +26,7 @@ noop.render = function (str) {
 noop.renderFile = function (str) {
   return str;
 };
+
 
 /**
  * ## Template
@@ -83,47 +84,6 @@ Template.prototype.defaultConfig = function(opts) {
   });
 
   this.defaultTags();
-  this.setEngine();
-};
-
-
-/**
- * ## .lazyLayouts
- *
- * lazily add a `Layout` instance if it has not yet been added.
- *
- * We cannot instantiate `Layout` in the defaultConfig because
- * it reads settings which might be set until after init.
- *
- * @api private
- */
-
-Template.prototype.setEngine = function(filepath, options) {
-  this.ext = path.extname(filepath);
-  this.defaultEngine = this.ext || this.get('view engine');
-
-  if (!this.ext && !this.defaultEngine) {
-    throw new Error('No default engine was specified and no extension was provided.');
-  }
-
-  if (this.defaultEngine && this.defaultEngine[0] !== '.') {
-    this.defaultEngine = '.' + this.defaultEngine;
-  }
-
-  // If `file.path` was originally passed as just a name
-  if (!this.ext) {
-    this.path += (this.ext = this.defaultEngine);
-  }
-
-  // get the engine needed for rendering based on the current extension
-  this._engine = (this.engines[this.ext] || this.engines[this.defaultEngine]);
-
-  // when no engine is found, use the noop engine and setup
-  // the ext so it'll be passed around correctly.
-  if (!this._engine) {
-    this._engine = this.engines['.*'];
-    this.options.ext = this.ext;
-  }
 };
 
 
@@ -165,7 +125,7 @@ Template.prototype.lazyLayouts = function(options) {
  * @api public
  */
 
-Template.prototype.set = function set(key, value, obj) {
+Template.prototype.set = function set(key, value) {
   this.cache[key] = value;
   return this;
 };
@@ -241,16 +201,79 @@ Template.prototype.constant = function(key, value, obj) {
  *
  * @chainable
  * @method extend
- * @param {Arguments} `objects` Objects to extend on to the `cache`.
+ * @param {Arguments} Objects to extend on to the `cache`.
  * @return {Cache} for chaining
  * @api public
  */
 
-Template.prototype.extend = function(objects) {
+Template.prototype.extend = function() {
   var args = [].slice.call(arguments);
   _.extend.apply(_, [this].concat(args));
   return this;
 };
+
+/**
+ * Check if `setting` is enabled (truthy).
+ *
+ *    template.enabled('foo')
+ *    // => false
+ *
+ *    template.enable('foo')
+ *    template.enabled('foo')
+ *    // => true
+ *
+ * @param {String} setting
+ * @return {Boolean}
+ * @api public
+ */
+
+Template.prototype.enabled = function(setting){
+  return !!this.set(setting);
+};
+
+/**
+ * Check if `setting` is disabled.
+ *
+ *    template.disabled('foo')
+ *    // => true
+ *
+ *    template.enable('foo')
+ *    template.disabled('foo')
+ *    // => false
+ *
+ * @param {String} setting
+ * @return {Boolean}
+ * @api public
+ */
+
+Template.prototype.disabled = function(setting){
+  return !this.set(setting);
+};
+
+/**
+ * Enable `setting`.
+ *
+ * @param {String} setting
+ * @return {app} for chaining
+ * @api public
+ */
+
+Template.prototype.enable = function(setting){
+  return this.set(setting, true);
+};
+
+/**
+ * Disable `setting`.
+ *
+ * @param {String} setting
+ * @return {app} for chaining
+ * @api public
+ */
+
+Template.prototype.disable = function(setting){
+  return this.set(setting, false);
+};
+
 
 
 /**
@@ -268,12 +291,12 @@ Template.prototype.extend = function(objects) {
  *
  * @chainable
  * @method data
- * @param {Arguments} `objects` Objects to extend on to the `context` object.
+ * @param {Arguments} Objects to extend on to the `context` object.
  * @return {Cache} for chaining
  * @api public
  */
 
-Template.prototype.data = function(objects) {
+Template.prototype.data = function() {
   var args = [].slice.call(arguments);
   _.extend.apply(_, [this.context].concat(args));
   return this;
@@ -533,33 +556,95 @@ Template.prototype.layouts = function () {
  * @api public
  */
 
-Template.prototype.engine = function (ext, fn, options) {
-  var opts = _.extend({}, options);
-  this.lazyLayouts(opts);
+// Template.prototype.engine = function (ext, fn, options) {
+//   var opts = _.extend({}, options);
+//   var engine = {};
 
+//   if (typeof fn === 'function') {
+//     engine.renderFile = fn;
+//     engine.render = fn.render;
+//   } else if (typeof fn === 'object') {
+//     engine = fn;
+//     engine.renderFile = fn.renderFile || fn.__express;
+//   }
+//   engine.options = fn.options || opts;
+
+//   if (typeof engine.render !== 'function') {
+//     throw new Error('[template]: engines are expected to have a `render` method.');
+//   }
+
+//   if (ext[0] !== '.') {
+//     ext = '.' + ext;
+//   }
+
+//   this.engines[ext] = engine;
+//   return this;
+// };
+
+Template.prototype.engine = function(ext, fn, options) {
   var engine = {};
-
   if (typeof fn === 'function') {
     engine.renderFile = fn;
-    engine.render = fn.render;
   } else if (typeof fn === 'object') {
     engine = fn;
     engine.renderFile = fn.renderFile || fn.__express;
+    engine.render = fn.render;
   }
-  engine.options = fn.options || opts;
+  engine.options = options || {};
 
-
-  if (typeof engine.render !== 'function') {
-    throw new Error('[template]: engines are expected to have a `render` method.');
+  if (typeof engine.renderFile !== 'function') {
+    throw new Error('Engines are expected to have a `renderFile` method.');
   }
 
-  if ('.' !== ext[0]) {
+  if (ext[0] !== '.') {
     ext = '.' + ext;
   }
 
   this.engines[ext] = engine;
   return this;
 };
+
+/**
+ * Register the given template engine callback `fn`
+ * as `ext`.
+ *
+ * By default will `require()` the engine based on the
+ * file extension. For example if you try to render
+ * a "foo.jade" file Express will invoke the following internally:
+ *
+ *     app.engine('jade', require('jade').__express);
+ *
+ * For engines that do not provide `.__express` out of the box,
+ * or if you wish to "map" a different extension to the template engine
+ * you may use this method. For example mapping the EJS template engine to
+ * ".html" files:
+ *
+ *     app.engine('html', require('ejs').renderFile);
+ *
+ * In this case EJS provides a `.renderFile()` method with
+ * the same signature that Express expects: `(path, options, callback)`,
+ * though note that it aliases this method as `ejs.__express` internally
+ * so if you're using ".ejs" extensions you dont need to do anything.
+ *
+ * Some template engines do not follow this convention, the
+ * [Consolidate.js](https://github.com/visionmedia/consolidate.js)
+ * library was created to map all of node's popular template
+ * engines to follow this convention, thus allowing them to
+ * work seamlessly within Express.
+ *
+ * @param {String} ext
+ * @param {Function} fn
+ * @return {app} for chaining
+ * @api public
+ */
+
+// Template.prototype.engine = function(ext, engine){
+//   if ('.' != ext[0]) {
+//     ext = '.' + ext;
+//   }
+//   this.engines[ext] = engine;
+//   return this;
+// };
 
 
 /**
@@ -581,10 +666,11 @@ Template.prototype.engine = function (ext, fn, options) {
 
 Template.prototype.compile = function (str, settings) {
   var opts = _.extend({}, this.options, settings);
-  var ext = opts.ext || this.ext;
+  opts.ext = opts.ext || this.ext;
   this.lazyLayouts(settings);
 
-  return this.engines[ext].render(str, null, opts);
+  console.log(this.engines[opts.ext].render);
+  return this.engines[opts.ext].renderFile(str, null, opts);
 };
 
 
@@ -607,11 +693,15 @@ Template.prototype.compile = function (str, settings) {
 
 Template.prototype.compileFile = function (filepath, options) {
   var opts = _.extend(this.options, options);
-  var str = fs.readFileSync(filepath, 'utf8');
-  opts.ext = path.extname(opts.filename);
+  this.lazyLayouts(opts);
+
+  opts.ext = path.extname(filepath);
   opts.filename = filepath;
 
-  return this.cache.templates[filepath] = this.compile(str, opts);
+  // console.log(this.engines[opts.ext])
+  var file = this.engines[opts.ext].renderFile(filepath, null, opts);
+  // return this.cache.templates[filepath] = this.compile(str, opts);
+  return this.cache.templates[filepath] = file;
 };
 
 
@@ -649,23 +739,37 @@ Template.prototype.compileFiles = function (patterns, options) {
   return this;
 };
 
-
 /**
- * ## .render
+ * ## .cache
  *
- * Render a template `str` with the given `context` and `options`.
+ * Pass a filepath, array of filepaths or glob patterns and cache each file.
  *
- * @param  {Object} `context` Data to pass to registered view engines.
- * @param  {Object} `options` Options to pass to registered view engines.
- * @return {String}
+ * **Example:**
+ *
+ * ```js
+ * template.cache('<%= foo %>', {delims: ['{%', '%}']});
+ * ```
+ *
+ * @param  {Array|String} `patterns` File path(s) or glob patterns.
+ * @param  {Array} `options`
+ * @return {Array}
  * @api public
  */
 
-Template.prototype.render = function (str, context, options) {
-  this.lazyLayouts(options);
+Template.prototype.cacheView = function (patterns, options) {
+  var opts = _.extend(this.options, options);
+  if (typeof patterns === 'string' && isAbsolute(patterns)) {
+    if (this.cache.templates.hasOwnProperty(patterns)) {
+      return this.cache.templates[patterns];
+    }
+    return this.compileFile(patterns, this.options);
+  }
 
-  var settings = _.extend({imports: this.cache.tags}, settings);
-  return this.compile(str, settings)(context);
+  glob.sync(patterns, this.options).forEach(function(filepath) {
+    filepath = path.resolve(this.options.cwd, filepath);
+    this.cacheView(filepath, options);
+  }.bind(this));
+  return this;
 };
 
 
@@ -680,10 +784,76 @@ Template.prototype.render = function (str, context, options) {
  * @api public
  */
 
+// Template.prototype.render = function (str, context, options) {
+//   this.lazyLayouts(options);
+
+//   var settings = _.extend({imports: this.cache.tags}, settings);
+//   return this.compile(str, settings)(context);
+// };
+
+Template.prototype.render = function (name, options) {
+  var opts = {};
+  var cache = this.cache.templates;
+  var engines = this.engines;
+  var view;
+
+  _.extend(opts, this.locals);
+  _.extend(opts, options);
+
+    // set .cache unless explicitly provided
+  opts.cache = opts.cache == null
+    ? this.enabled('view cache')
+    : opts.cache;
+
+  // primed cache
+  if (opts.cache) {
+    view = cache[name];
+  }
+
+  if (!view) {
+    view = new View(name, {
+      defaultEngine: this.get('view engine'),
+      cwd: this.get('cwd'),
+      engines: engines
+    });
+
+    if (!view.path) {
+      var err = new Error('.render() could not find "' + name + '".');
+      err.view = view;
+      return err;
+    }
+
+    // prime the cache
+    if (opts.cache) {
+      cache[name] = view;
+    }
+  }
+
+  try {
+    return view.render(opts);
+    // console.log(view)
+  } catch (err) {
+    return err;
+  }
+};
+
+
+/**
+ * ## .renderFile
+ *
+ * Render a template `str` with the given `context` and `options`.
+ *
+ * @param  {Object} `context` Data to pass to registered view engines.
+ * @param  {Object} `options` Options to pass to registered view engines.
+ * @return {String}
+ * @api public
+ */
+
 Template.prototype.renderFile = function (filepath, context, settings) {
-  this.lazyLayouts(options);
-  var settings = _.extend({imports: this.cache.tags}, settings);
-  return this.compileFile(filepath, settings)(context);
+  var opts = _.extend({imports: this.cache.tags}, settings);
+  this.lazyLayouts(opts);
+
+  return this.compileFile(filepath, opts)(context);
 };
 
 

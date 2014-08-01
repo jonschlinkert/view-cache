@@ -10,7 +10,8 @@
 var should = require('should');
 var Template = require('..');
 var _ = require('lodash');
-var engines = require('consolidate');
+// var engines = require('consolidate');
+var engines = require('engines');
 
 
 describe('template compileFile:', function () {
@@ -19,7 +20,7 @@ describe('template compileFile:', function () {
       var template = new Template();
       template.engine('tmpl', engines.lodash);
 
-      var compiled = template.compileFile('test/fixtures/no-matter.tmpl');
+      var compiled = template.compile('test/fixtures/no-matter.tmpl');
       console.log(compiled);
 
       // compiled.should.be.a.function;
