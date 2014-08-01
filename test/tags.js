@@ -27,6 +27,7 @@ describe('template tags', function () {
     template.addTag('include', require('../tags/include'));
     template.addTag('glob', require('../tags/glob')(template));
     template.addTag('log', require('../tags/log'));
+
     it('should add tags to `cache.tags`.', function () {
       var cache = Object.keys(template.cache.tags);
       cache.should.have.length(4);
@@ -36,21 +37,21 @@ describe('template tags', function () {
       a: 'A',
       b: 'B',
       c: 'C',
-      d: 'D',
-      layout: 'base'
+      d: 'D'
     };
 
     it('should add tags to `cache.tags`.', function () {
       template.process('<%= include("test/fixtures/a.md") %>', ctx);
       template.process('<%= include("test/fixtures/b.md") %>', ctx);
     });
+
     it('should add tags to `cache.tags`.', function () {
       template.process('<%= glob("test/fixtures/*.md") %>', ctx);
       template.process('<%= glob(["test/fixtures/*.md"]) %>', ctx);
     });
 
     it('should add tags to `cache.tags`.', function () {
-      // template.process('<%= log("logging tag works!") %>', ctx);
+      template.process('<%= log("logging tag works!") %>', ctx);
     });
   });
 });

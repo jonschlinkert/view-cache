@@ -49,31 +49,50 @@ describe('template delimiters:', function () {
     });
   });
 
-
   describe('.getDelims:', function () {
-    it('should get the currently defined delimiters:', function () {
+    describe('when multiple delimiters are defined:', function () {
       var template = new Template();
-      template.addDelims('square', ['[[', ']]']);
-      template.setDelims('square');
 
-      var delims = template.getDelims();
-      delims.should.eql({
-        beginning: '',
-        matter: '([\\s\\S]+?)',
-        body: '',
-        end: '',
-        flags: 'g',
-        noncapture: false,
-        escape: /\[\[-([\s\S]+?)\]\]/g,
-        open: '\\[\\[',
-        close: '\\]\\]',
-        delims: ['[[', ']]'],
-        evaluate: /\[\[([\s\S]+?)\]\]/g,
-        interpolate: /\[\[=([\s\S]+?)\]\]/g
-      })
+      template.addDelims('a', ['{{', '}}']);
+      template.addDelims('b', ['<%', '%>']);
+      template.addDelims('c', ['[[', ']]']);
+
+      it('should get the currently defined delimiters:', function () {
+        template.setDelims('c');
+        template.getDelims().should.eql({
+          beginning: '',
+          matter: '([\\s\\S]+?)',
+          body: '',
+          end: '',
+          flags: 'g',
+          noncapture: false,
+          escape: /\[\[-([\s\S]+?)\]\]/g,
+          open: '\\[\\[',
+          close: '\\]\\]',
+          delims: ['[[', ']]'],
+          evaluate: /\[\[([\s\S]+?)\]\]/g,
+          interpolate: /\[\[=([\s\S]+?)\]\]/g
+        });
+      });
+
+      it('should get the specified delimiters:', function () {
+        template.getDelims('a').should.eql({
+          beginning: '',
+          matter: '([\\s\\S]+?)',
+          body: '',
+          end: '',
+          flags: 'g',
+          noncapture: false,
+          escape: /\{\{-([\s\S]+?)\}\}/g,
+          open: '\\{\\{',
+          close: '\\}\\}',
+          delims: [ '{{', '}}' ],
+          evaluate: /\{\{([\s\S]+?)\}\}/g,
+          interpolate: /\{\{=([\s\S]+?)\}\}/g
+        });
+      });
     });
   });
-
 
   describe('.setDelims:', function () {
     it('should use the currently set delims:', function () {
@@ -109,6 +128,38 @@ describe('template delimiters:', function () {
     });
   });
 
+  describe('layout delimiters:', function () {
+    describe('when layout delimiters are defined:', function () {
+      var template = new Template();
+
+      template.addDelims('a', ['{{', '}}'], {layoutDelims: ['<%', '%>'], tag: 'foo'});
+      template.addDelims('b', ['<%', '%>'], {layoutDelims: ['{{', '}}'], tag: 'bar'});
+      template.addDelims('c', ['[[', ']]'], {layoutDelims: ['{{', '}}'], tag: 'baz'});
+
+      it('should add a `layoutDelims` property to the delimiters object.', function () {
+        template.setDelims('a');
+        template.getDelims().should.have.property('layoutDelims');
+        var a = template.getDelims();
+      });
+
+      it('should add a `layoutDelims` property to the delimiters object.', function () {
+        template.setDelims('a');
+        template.getDelims().layoutDelims.should.be.an.array;
+        template.getDelims().layoutDelims[0].should.eql('<%');
+        template.getDelims().tag.should.eql('foo');
+
+        template.setDelims('b');
+        template.getDelims().layoutDelims.should.be.an.array;
+        template.getDelims().layoutDelims[0].should.eql('{{');
+        template.getDelims().tag.should.eql('bar');
+
+        template.setDelims('c');
+        template.getDelims().layoutDelims.should.be.an.array;
+        template.getDelims().layoutDelims[0].should.eql('{{');
+        template.getDelims().tag.should.eql('baz');
+      });
+    });
+  });
 
   describe('when strings with incomplete template delims are passed to an engine:', function () {
     it('should not hang:', function () {
@@ -116,10 +167,10 @@ describe('template delimiters:', function () {
       template.addDelims('hbs', ['{{', '}}']);
       template.addDelims('square', ['[[', ']]']);
 
-      var a = template.process('[[= name ]] ]]', {name: 'Jon'}, 'square');
-      var b = template.process('[[= name ]] [[', {name: 'Jon'}, 'square');
-      var c = template.process('{{= name }} {{', {name: 'Jon'}, 'hbs');
-      var d = template.process('${ name } ${', {name: 'Jon'}, 'es6');
+      var a = template.process('[[= name ]] ]]', {name: 'Jon'}, {delims: 'square'});
+      var b = template.process('[[= name ]] [[', {name: 'Jon'}, {delims: 'square'});
+      var c = template.process('{{= name }} {{', {name: 'Jon'}, {delims: 'hbs'});
+      var d = template.process('${ name } ${', {name: 'Jon'}, {delims: 'es6'});
       var e = template.process('<%= name %> <%', {name: 'Jon'});
 
       a.should.equal('Jon ]]');

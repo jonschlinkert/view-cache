@@ -9,12 +9,63 @@
 
 var should = require('should');
 var Template = require('..');
-var template = new Template();
 var _ = require('lodash');
 
 
-describe('.set():', function () {
-  xdescribe('when templates are defined as objects:', function () {
+describe('template partials', function () {
+  describe('.partial():', function () {
+    var template = new Template();
+    template.partial('a', 'This is partial <%= a %>');
+    template.partial('b', 'This is partial <%= b %>');
+
+    it('should add a partial to `cache.partials`.', function () {
+      var cache = Object.keys(template.cache.partials);
+      cache.should.have.length(2);
+    });
+
+    it('should extend the `context` with data.', function () {
+      template.data({a: 'A', b: 'B'});
+
+      var a = template.process('<%= partial("a") %>');
+      var b = template.process('<%= partial("b") %>');
+
+      a.should.equal('This is partial A');
+      b.should.equal('This is partial B');
+    });
+  });
+
+  describe('.partials():', function () {
+    var template = new Template();
+    template.set('layoutTag', 'blah');
+
+
+    template.partials({
+      a: 'This is partial <%= a %>',
+      b: 'This is partial <%= b %>',
+      c: 'This is partial <%= c %>',
+      d: 'This is partial <%= d %>'
+    });
+
+    it('should add multiple partials to `cache.partials`.', function () {
+      var cache = Object.keys(template.cache.partials);
+      cache.should.have.length(4);
+    });
+
+    it('should extend the context.', function () {
+      template.data({a: 'A', b: 'B', c: 'C', d: 'D'});
+
+      var a = template.process('<%= partial("a") %>');
+      var b = template.process('<%= partial("b") %>');
+      var c = template.process('<%= partial("c") %>');
+      var d = template.process('<%= partial("d") %>');
+
+      console.log(template);
+
+      a.should.equal('This is partial A');
+      b.should.equal('This is partial B');
+      c.should.equal('This is partial C');
+      d.should.equal('This is partial D');
+    });
 
   });
 });

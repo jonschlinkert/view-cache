@@ -32,28 +32,194 @@ var delimiters = new Delimiters();
  * @api public
  */
 
-function Template(context, options) {
-  this.context = context || {};
-  this.options = options || {};
-  var opts = this.options;
-  this.delims = {};
-  this.cache = {};
+function Template(options) {
+  var opts = _.extend({}, options);
+  this.context = opts.locals || {};
+  this.delims = opts.delims || {};
+  this.cache = opts.cache || {};
+  this.options = opts;
 
+  this.defaultConfig(this.options);
+}
+
+
+/**
+ * Initialize default configuration.
+ *
+ * @api private
+ */
+
+Template.prototype.defaultConfig = function(opts) {
   this.set('cwd', opts.cwd || process.cwd());
   this.engine = _.template || opts.engine;
+
+  this.set('tags', opts.tags || {});
+  this.set('layouts', opts.layouts || {});
+  this.set('partials', opts.partials || {});
+
+  this.set('defaultEngine', 'tmpl');
+  this.set('view engine', 'noop');
 
   this.addDelims('default', ['<%', '%>']);
   this.addDelims('es6', ['${', '}'], {
     interpolate: /\$\{([^\\}]*(?:\\.[^\\}]*)*)\}/g
   });
 
-  this._cache('partials', opts.partials || {});
-  this._cache('layouts', opts.layouts || {});
-  this._cache('tags', opts.tags || {});
+  this.defaultTags();
+};
 
-  this._layouts = new Layouts(opts);
-  this._defaultTags();
-}
+
+/**
+ * ## .lazyLayouts
+ *
+ * lazily add a `Layout` instance if it has not yet been added.
+ *
+ * We cannot instantiate `Layout` in the defaultConfig because
+ * it reads settings which might be set until after init.
+ *
+ * @api private
+ */
+
+Template.prototype.lazyLayouts = function(options) {
+  if (!this.layoutCache) {
+    var opts = _.defaults({}, options, this.options);
+    opts.delims = opts.layoutDelims;
+    opts.tag = opts.layoutTag;
+    this.layoutCache = new Layouts(opts);
+  }
+};
+
+
+/**
+ * ## .set
+ *
+ * Assign `value` to `key`.
+ *
+ * ```js
+ * template.set(key, value);
+ * ```
+ *
+ * {%= docs("set") %}
+ *
+ * @param {String} `key`
+ * @param {*} `value`
+ * @return {Template} for chaining
+ * @api public
+ */
+
+Template.prototype.set = function set(key, value, obj) {
+  this.cache[key] = value;
+  return this;
+};
+
+
+/**
+ * ## .get
+ *
+ * Return the stored value of `key`.
+ *
+ * ```js
+ * template.set('foo', 'bar');
+ * template.get('foo');
+ * // => "bar"
+ * ```
+ *
+ * @param {*} `key`
+ * @return {*}
+ * @api public
+ */
+
+Template.prototype.get = function (key) {
+  return this.cache[key];
+};
+
+
+/**
+ * ## .constant
+ *
+ * Set a constant on the cache.
+ *
+ * **Example**
+ *
+ * ```js
+ * template.constant('root', '/foo/bar/');
+ * ```
+ *
+ * @method `constant`
+ * @param {String} `key`
+ * @param {*} `value`
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api private
+ */
+
+Template.prototype.constant = function(key, value, obj) {
+  var getter;
+  if (typeof value !== 'function'){
+    getter = function() {
+      return value;
+    };
+  } else {
+    getter = value;
+  }
+  obj = obj || this;
+  obj.__defineGetter__(key, getter);
+  return this;
+};
+
+
+/**
+ * ## .extend
+ *
+ * Extend the `cache` with the given object. This method is chainable.
+ *
+ * **Example**
+ *
+ * ```js
+ * cache
+ *   .extend({foo: 'bar'}, {baz: 'quux'});
+ *   .extend({fez: 'bang'});
+ * ```
+ *
+ * @chainable
+ * @method extend
+ * @param {Arguments} `objects` Objects to extend on to the `cache`.
+ * @return {Cache} for chaining
+ * @api public
+ */
+
+Template.prototype.extend = function(objects) {
+  var args = [].slice.call(arguments);
+  _.extend.apply(_, [this].concat(args));
+  return this;
+};
+
+
+/**
+ * ## .data
+ *
+ * Extend the `context` with the given object. This method is chainable.
+ *
+ * **Example**
+ *
+ * ```js
+ * cache
+ *   .data({foo: 'bar'}, {baz: 'quux'});
+ *   .data({fez: 'bang'});
+ * ```
+ *
+ * @chainable
+ * @method data
+ * @param {Arguments} `objects` Objects to extend on to the `context` object.
+ * @return {Cache} for chaining
+ * @api public
+ */
+
+Template.prototype.data = function(objects) {
+  var args = [].slice.call(arguments);
+  _.extend.apply(_, [this.context].concat(args));
+  return this;
+};
 
 
 /**
@@ -64,16 +230,17 @@ function Template(context, options) {
  * **Example:**
  *
  * ```js
- * template.makeDelimes(['{%', '%}'], opts);
+ * template.makeDelims(['{%', '%}'], ['{{', '}}'], opts);
  * ```
  *
- * @param  {Array} `array` Array of delimiters.
+ * @param  {Array} `delims` Array of delimiters.
+ * @param  {Array} `layoutDelims` layout-specific delimiters to use. Default is `['{{', '}}']`.
  * @param  {Object} `options` Options to pass to [delims].
  * @api private
  */
 
-Template.prototype.makeDelims = function (array, options) {
-  return delimiters.templates(array, _.defaults({
+Template.prototype.makeDelims = function (delims, layoutDelims, options) {
+  return delimiters.templates(delims, _.defaults({
     escape: true
   }, options));
 };
@@ -150,74 +317,6 @@ Template.prototype.getDelims = function(name) {
 
 
 /**
- * Private method for adding values to `this.cache`.
- *
- * @param  {String} `key`
- * @param  {*} value
- * @return {Template} to enable chaining.
- * @api private
- */
-
-Template.prototype._cache = function(key, value) {
-  this.constant(key, value, this.cache);
-  return this;
-};
-
-
-/**
- * ## .constant
- *
- * Set a constant on the cache.
- *
- * **Example**
- *
- * ```js
- * template.constant('root', '/foo/bar/');
- * ```
- *
- * @method `constant`
- * @param {String} `key`
- * @param {*} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api private
- */
-
-Template.prototype.constant = function(key, value, obj) {
-  var getter;
-  if (typeof value !== 'function'){
-    getter = function() {
-      return value;
-    };
-  } else {
-    getter = value;
-  }
-  obj = obj || this;
-  obj.__defineGetter__(key, getter);
-  return this;
-};
-
-
-/**
- * Extend the context.
- *
- * @param  {[type]} key
- * @param  {[type]} value
- * @return {[type]}
- */
-
-Template.prototype.context = function (key, value) {
-  this.context[key] = value;
-  return this;
-};
-
-Template.prototype.data = function (key, value) {
-  this.data[key] = value;
-  return this;
-};
-
-
-/**
  * ## .addtag
  *
  * Add a custom template tag.
@@ -249,14 +348,14 @@ Template.prototype.addTag = function (key, value) {
 
 
 /**
- * ## ._defaultTags
+ * ## .defaultTags
  *
  * Add default tags to the cache.
  *
  * @api private
  */
 
-Template.prototype._defaultTags = function () {
+Template.prototype.defaultTags = function () {
   this.addTag('partial', function (name) {
     return this.cache.partials[name];
   }.bind(this));
@@ -299,11 +398,10 @@ Template.prototype.partial = function (key, value) {
  * @api public
  */
 
-Template.prototype.partials = function (/*object*/) {
+Template.prototype.partials = function () {
   if (arguments.length === 0) {
     return this.cache.partials;
   }
-
   var args = [].slice.call(arguments);
   _.extend.apply(_, [this.cache.partials].concat(args));
   return this;
@@ -323,16 +421,18 @@ Template.prototype.partials = function (/*object*/) {
  */
 
 Template.prototype.layout = function (key, str, data) {
+  this.lazyLayouts();
+
   if (arguments.length === 1) {
     if (typeof key === 'object') {
-      this._layouts.set(key);
+      this.layoutCache.set(key);
       this.layouts(key);
       return this;
     }
     return this.cache.layouts[key];
   }
   this.cache.layouts[key] = {content: str, data: data || {}};
-  this._layouts.set(key, data, str);
+  this.layoutCache.set(key, data, str);
   return this;
 };
 
@@ -348,59 +448,19 @@ Template.prototype.layout = function (key, str, data) {
  * @api public
  */
 
-Template.prototype.layouts = function (/*object*/) {
+Template.prototype.layouts = function () {
+  this.lazyLayouts();
+
   if (arguments.length === 0) {
     return this.cache.layouts;
   }
 
   var args = [].slice.call(arguments);
   _.extend.apply(_, [this.cache.layouts].concat(args));
+  this.layoutCache.set(this.cache.layouts);
   return this;
 };
 
-
-/**
- * ## .set
- *
- * Assign `value` to `key`.
- *
- * ```js
- * template.set(key, value);
- * ```
- *
- * {%= docs("set") %}
- *
- * @param {String} `key`
- * @param {*} `value`
- * @return {Template} for chaining
- * @api public
- */
-
-Template.prototype.set = function set(key, value) {
-  this.cache[key] = value;
-  return this;
-};
-
-
-/**
- * ## .get
- *
- * Return the stored value of `key`.
- *
- * ```js
- * template.set('foo', 'bar');
- * template.get('foo');
- * // => "bar"
- * ```
- *
- * @param {*} `key`
- * @return {*}
- * @api public
- */
-
-Template.prototype.get = function (key) {
-  return this.cache[key];
-};
 
 /**
  * ## .engine
@@ -416,6 +476,10 @@ Template.prototype.get = function (key) {
  */
 
 Template.prototype.engine = function (ext, fn, options) {
+  // Clone the options
+  var opts = _.extend({}, options);
+  this.lazyLayouts(opts);
+
   var engine = {};
 
   if (typeof fn === 'function') {
@@ -425,7 +489,7 @@ Template.prototype.engine = function (ext, fn, options) {
     engine = fn;
     engine.renderFile = fn.renderFile || fn.__express;
   }
-  engine.options = fn.options || options;
+  engine.options = fn.options || opts;
 
   if (typeof engine.render !== 'function') {
     throw new gutil.PluginError('Template', 'Engines are expected to have a `render` method.');
@@ -456,9 +520,11 @@ Template.prototype.engine = function (ext, fn, options) {
  * @api public
  */
 
-Template.prototype.compile = function (str, options) {
-  var settings = _.extend({}, this.options, options);
-  return this.engine(str, null, settings);
+Template.prototype.compile = function (str, settings) {
+  this.lazyLayouts(settings);
+
+  var opts = _.extend({}, this.options, settings);
+  return this.engine(str, null, opts);
 };
 
 
@@ -474,6 +540,8 @@ Template.prototype.compile = function (str, options) {
  */
 
 Template.prototype.render = function (str, context, settings) {
+  this.lazyLayouts(settings);
+
   return this.engine(str, context, _.extend({
     imports: this.cache.tags
   }, settings));
@@ -481,7 +549,7 @@ Template.prototype.render = function (str, context, settings) {
 
 
 /**
- * ## ._assertDelims
+ * ## .assertDelims
  *
  * Return `true` if template delimiters exist in `str`.
  *
@@ -490,7 +558,7 @@ Template.prototype.render = function (str, context, settings) {
  * @api private
  */
 
-Template.prototype._assertDelims = function (str, re) {
+Template.prototype.assertDelims = function (str, re) {
   return re ? str.indexOf(re.delims[0]) !== -1 &&
     str.indexOf(re.delims[1]) !== -1 :
     str.indexOf('<%') !== -1 ||
@@ -509,20 +577,28 @@ Template.prototype._assertDelims = function (str, re) {
  * @api public
  */
 
-Template.prototype.process = function (str, context, settings) {
+Template.prototype.process = function (str, context, options) {
   var ctx = _.extend({}, this.context, context);
-  var delims = this.getDelims(ctx.delims || settings);
+  var opts = _.extend({}, this.options, options);
+  this.lazyLayouts(opts);
+
+  var delims = this.getDelims(ctx.delims || opts.delims);
   var original = str, layout, data = {};
+
+  // console.log('delims:', delims)
 
   if (!ctx.layout) {
     data = _.extend({}, ctx);
   } else {
-    layout = this._layouts.inject(str, ctx.layout);
+    layout = this.layoutCache.inject(str, ctx.layout, {
+      delims: opts.layoutDelims,
+      tag: opts.layoutTag
+    });
     data = _.extend({}, ctx, layout.data);
     str = layout.content;
   }
 
-  while (this._assertDelims(str, delims)) {
+  while (this.assertDelims(str, delims)) {
     str = this.render(str, data, delims);
     if (str === original) {
       break;
@@ -531,5 +607,9 @@ Template.prototype.process = function (str, context, settings) {
   return str;
 };
 
+
+/**
+ * Expose `Template`
+ */
 
 module.exports = Template;

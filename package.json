@@ -47,7 +47,7 @@
     "arrayify-compact": "^0.1.0",
     "delims": "^0.3.0",
     "globby": "^0.1.1",
-    "layouts": "^0.1.0",
+    "layouts": "^0.2.1",
     "lodash": "^2.4.1"
   }
 }
