@@ -12,8 +12,8 @@ var Template = require('..');
 var _ = require('lodash');
 
 
-describe('template partials', function () {
-  describe('.partial():', function () {
+describe('template data', function () {
+  describe('.data():', function () {
     var template = new Template();
     template.partial('a', 'This is partial <%= a %>');
     template.partial('b', 'This is partial <%= b %>');
@@ -58,8 +58,6 @@ describe('template partials', function () {
       var b = template.process('<%= partial("b") %>');
       var c = template.process('<%= partial("c") %>');
       var d = template.process('<%= partial("d") %>');
-
-      console.log(template);
 
       a.should.equal('This is partial A');
       b.should.equal('This is partial B');

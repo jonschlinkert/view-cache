@@ -8,10 +8,24 @@
 'use strict';
 
 var _ = require('lodash');
+var fs = require('fs');
+var path = require('path');
+var glob = require('globby');
 var Layouts = require('layouts');
+var isAbsolute = require('is-absolute');
 var Delimiters = require('delims');
 var delimiters = new Delimiters();
 
+
+var noop = function (str) {
+  return str;
+};
+noop.render = function (str) {
+  return str;
+};
+noop.renderFile = function (str) {
+  return str;
+};
 
 /**
  * ## Template
@@ -34,6 +48,7 @@ var delimiters = new Delimiters();
 
 function Template(options) {
   var opts = _.extend({}, options);
+  opts.cwd = opts.cwd || process.cwd();
   this.context = opts.locals || {};
   this.delims = opts.delims || {};
   this.cache = opts.cache || {};
@@ -51,14 +66,16 @@ function Template(options) {
 
 Template.prototype.defaultConfig = function(opts) {
   this.set('cwd', opts.cwd || process.cwd());
-  this.engine = _.template || opts.engine;
+  this._engine = noop;
 
+  this.cache.templates = {};
+  this.engines = {};
+
+  this.engine('tmpl', noop);
   this.set('tags', opts.tags || {});
   this.set('layouts', opts.layouts || {});
   this.set('partials', opts.partials || {});
-
-  this.set('defaultEngine', 'tmpl');
-  this.set('view engine', 'noop');
+  this.set('view engine', 'tmpl');
 
   this.addDelims('default', ['<%', '%>']);
   this.addDelims('es6', ['${', '}'], {
@@ -66,6 +83,47 @@ Template.prototype.defaultConfig = function(opts) {
   });
 
   this.defaultTags();
+  this.setEngine();
+};
+
+
+/**
+ * ## .lazyLayouts
+ *
+ * lazily add a `Layout` instance if it has not yet been added.
+ *
+ * We cannot instantiate `Layout` in the defaultConfig because
+ * it reads settings which might be set until after init.
+ *
+ * @api private
+ */
+
+Template.prototype.setEngine = function(filepath, options) {
+  this.ext = path.extname(filepath);
+  this.defaultEngine = this.ext || this.get('view engine');
+
+  if (!this.ext && !this.defaultEngine) {
+    throw new Error('No default engine was specified and no extension was provided.');
+  }
+
+  if (this.defaultEngine && this.defaultEngine[0] !== '.') {
+    this.defaultEngine = '.' + this.defaultEngine;
+  }
+
+  // If `file.path` was originally passed as just a name
+  if (!this.ext) {
+    this.path += (this.ext = this.defaultEngine);
+  }
+
+  // get the engine needed for rendering based on the current extension
+  this._engine = (this.engines[this.ext] || this.engines[this.defaultEngine]);
+
+  // when no engine is found, use the noop engine and setup
+  // the ext so it'll be passed around correctly.
+  if (!this._engine) {
+    this._engine = this.engines['.*'];
+    this.options.ext = this.ext;
+  }
 };
 
 
@@ -476,7 +534,6 @@ Template.prototype.layouts = function () {
  */
 
 Template.prototype.engine = function (ext, fn, options) {
-  // Clone the options
   var opts = _.extend({}, options);
   this.lazyLayouts(opts);
 
@@ -491,13 +548,15 @@ Template.prototype.engine = function (ext, fn, options) {
   }
   engine.options = fn.options || opts;
 
+
   if (typeof engine.render !== 'function') {
-    throw new gutil.PluginError('Template', 'Engines are expected to have a `render` method.');
+    throw new Error('[template]: engines are expected to have a `render` method.');
   }
 
   if ('.' !== ext[0]) {
     ext = '.' + ext;
   }
+
   this.engines[ext] = engine;
   return this;
 };
@@ -521,10 +580,73 @@ Template.prototype.engine = function (ext, fn, options) {
  */
 
 Template.prototype.compile = function (str, settings) {
+  var opts = _.extend({}, this.options, settings);
+  var ext = opts.ext || this.ext;
   this.lazyLayouts(settings);
 
-  var opts = _.extend({}, this.options, settings);
-  return this.engine(str, null, opts);
+  return this.engines[ext].render(str, null, opts);
+};
+
+
+/**
+ * ## .compileFile
+ *
+ * Compile a template from a filepath.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.compileFile('templates/index.tmpl');
+ * ```
+ *
+ * @param  {String} `filepath`
+ * @param  {Object} `options`
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.compileFile = function (filepath, options) {
+  var opts = _.extend(this.options, options);
+  var str = fs.readFileSync(filepath, 'utf8');
+  opts.ext = path.extname(opts.filename);
+  opts.filename = filepath;
+
+  return this.cache.templates[filepath] = this.compile(str, opts);
+};
+
+
+/**
+ * ## .compileFiles
+ *
+ * Pass a filepath, array of filepaths or glob patterns and compile each file.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.compileFiles('*.tmpl');
+ * ```
+ *
+ * @param  {Array|String} `patterns` String or array of file paths or glob patterns.
+ * @param  {Array} `options` Options to pass to globby
+ * @return {Array}
+ * @api public
+ */
+
+Template.prototype.compileFiles = function (patterns, options) {
+  var opts = _.extend(this.options, options);
+
+  if (typeof patterns === 'string' && isAbsolute(patterns)) {
+    if (this.cache.templates.hasOwnProperty(patterns)) {
+      return this.cache.templates[patterns];
+    }
+    return this.compileFile(patterns, opts);
+  }
+
+  glob.sync(patterns, opts).forEach(function (filepath) {
+    filepath = path.resolve(opts.cwd, filepath);
+    this.compileFile(filepath, options);
+  }.bind(this));
+  return this;
 };
 
 
@@ -539,12 +661,29 @@ Template.prototype.compile = function (str, settings) {
  * @api public
  */
 
-Template.prototype.render = function (str, context, settings) {
-  this.lazyLayouts(settings);
+Template.prototype.render = function (str, context, options) {
+  this.lazyLayouts(options);
 
-  return this.engine(str, context, _.extend({
-    imports: this.cache.tags
-  }, settings));
+  var settings = _.extend({imports: this.cache.tags}, settings);
+  return this.compile(str, settings)(context);
+};
+
+
+/**
+ * ## .render
+ *
+ * Render a template `str` with the given `context` and `options`.
+ *
+ * @param  {Object} `context` Data to pass to registered view engines.
+ * @param  {Object} `options` Options to pass to registered view engines.
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.renderFile = function (filepath, context, settings) {
+  this.lazyLayouts(options);
+  var settings = _.extend({imports: this.cache.tags}, settings);
+  return this.compileFile(filepath, settings)(context);
 };
 
 
@@ -584,8 +723,6 @@ Template.prototype.process = function (str, context, options) {
 
   var delims = this.getDelims(ctx.delims || opts.delims);
   var original = str, layout, data = {};
-
-  // console.log('delims:', delims)
 
   if (!ctx.layout) {
     data = _.extend({}, ctx);

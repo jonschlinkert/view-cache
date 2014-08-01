@@ -33,20 +33,6 @@ describe('templates:', function () {
 
   describe('when template is used:', function () {
     it('should process templates with default delimiters.', function () {
-      var compiled = template.compile('hello <%= name %>');
-      var actual = compiled({ 'name': 'Jon Schlinkert' });
-      actual.should.equal('hello Jon Schlinkert');
-    });
-
-    it('should process templates with es6 delimiters.', function () {
-      var compiled = template.compile('hello ${ name }');
-      var actual = compiled({ 'name': 'Jon Schlinkert' });
-      actual.should.equal('hello Jon Schlinkert');
-    });
-  });
-
-  describe('when template is used:', function () {
-    it('should process templates with default delimiters.', function () {
       var compiled = template.process('hello <%= name %>', { name: 'Jon Schlinkert' });
       compiled.should.equal('hello Jon Schlinkert');
     });
