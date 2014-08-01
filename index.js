@@ -556,35 +556,10 @@ Template.prototype.layouts = function () {
  * @api public
  */
 
-// Template.prototype.engine = function (ext, fn, options) {
-//   var opts = _.extend({}, options);
-//   var engine = {};
-
-//   if (typeof fn === 'function') {
-//     engine.renderFile = fn;
-//     engine.render = fn.render;
-//   } else if (typeof fn === 'object') {
-//     engine = fn;
-//     engine.renderFile = fn.renderFile || fn.__express;
-//   }
-//   engine.options = fn.options || opts;
-
-//   if (typeof engine.render !== 'function') {
-//     throw new Error('[template]: engines are expected to have a `render` method.');
-//   }
-
-//   if (ext[0] !== '.') {
-//     ext = '.' + ext;
-//   }
-
-//   this.engines[ext] = engine;
-//   return this;
-// };
-
 Template.prototype.engine = function(ext, fn, options) {
   var engine = {};
   if (typeof fn === 'function') {
-    engine.renderFile = fn;
+    engine = fn;
   } else if (typeof fn === 'object') {
     engine = fn;
     engine.renderFile = fn.renderFile || fn.__express;
@@ -592,8 +567,8 @@ Template.prototype.engine = function(ext, fn, options) {
   }
   engine.options = options || {};
 
-  if (typeof engine.renderFile !== 'function') {
-    throw new Error('Engines are expected to have a `renderFile` method.');
+  if (typeof engine.render !== 'function') {
+    throw new Error('Engines are expected to have a `render` method.');
   }
 
   if (ext[0] !== '.') {
@@ -603,48 +578,6 @@ Template.prototype.engine = function(ext, fn, options) {
   this.engines[ext] = engine;
   return this;
 };
-
-/**
- * Register the given template engine callback `fn`
- * as `ext`.
- *
- * By default will `require()` the engine based on the
- * file extension. For example if you try to render
- * a "foo.jade" file Express will invoke the following internally:
- *
- *     app.engine('jade', require('jade').__express);
- *
- * For engines that do not provide `.__express` out of the box,
- * or if you wish to "map" a different extension to the template engine
- * you may use this method. For example mapping the EJS template engine to
- * ".html" files:
- *
- *     app.engine('html', require('ejs').renderFile);
- *
- * In this case EJS provides a `.renderFile()` method with
- * the same signature that Express expects: `(path, options, callback)`,
- * though note that it aliases this method as `ejs.__express` internally
- * so if you're using ".ejs" extensions you dont need to do anything.
- *
- * Some template engines do not follow this convention, the
- * [Consolidate.js](https://github.com/visionmedia/consolidate.js)
- * library was created to map all of node's popular template
- * engines to follow this convention, thus allowing them to
- * work seamlessly within Express.
- *
- * @param {String} ext
- * @param {Function} fn
- * @return {app} for chaining
- * @api public
- */
-
-// Template.prototype.engine = function(ext, engine){
-//   if ('.' != ext[0]) {
-//     ext = '.' + ext;
-//   }
-//   this.engines[ext] = engine;
-//   return this;
-// };
 
 
 /**
@@ -669,8 +602,9 @@ Template.prototype.compile = function (str, settings) {
   opts.ext = opts.ext || this.ext;
   this.lazyLayouts(settings);
 
-  console.log(this.engines[opts.ext].render);
-  return this.engines[opts.ext].renderFile(str, null, opts);
+  var view = new View(opts.filename, opts);
+
+  return view.compile(str, opts);
 };
 
 
@@ -698,9 +632,7 @@ Template.prototype.compileFile = function (filepath, options) {
   opts.ext = path.extname(filepath);
   opts.filename = filepath;
 
-  // console.log(this.engines[opts.ext])
   var file = this.engines[opts.ext].renderFile(filepath, null, opts);
-  // return this.cache.templates[filepath] = this.compile(str, opts);
   return this.cache.templates[filepath] = file;
 };
 
@@ -738,6 +670,7 @@ Template.prototype.compileFiles = function (patterns, options) {
   }.bind(this));
   return this;
 };
+
 
 /**
  * ## .cache
@@ -784,14 +717,17 @@ Template.prototype.cacheView = function (patterns, options) {
  * @api public
  */
 
-// Template.prototype.render = function (str, context, options) {
-//   this.lazyLayouts(options);
+Template.prototype.render = function (str, context, options) {
+  this.lazyLayouts(options);
+  var settings = _.extend({imports: this.cache.tags}, settings);
+  return this.compile(str, settings)(context);
+};
 
-//   var settings = _.extend({imports: this.cache.tags}, settings);
-//   return this.compile(str, settings)(context);
-// };
 
-Template.prototype.render = function (name, options) {
+Template.prototype.renderFile = function (name, options) {
+  options = options || {};
+  this.lazyLayouts(options);
+
   var opts = {};
   var cache = this.cache.templates;
   var engines = this.engines;
@@ -814,7 +750,8 @@ Template.prototype.render = function (name, options) {
     view = new View(name, {
       defaultEngine: this.get('view engine'),
       cwd: this.get('cwd'),
-      engines: engines
+      engines: engines,
+      imports: this.cache.tags
     });
 
     if (!view.path) {
@@ -830,7 +767,7 @@ Template.prototype.render = function (name, options) {
   }
 
   try {
-    return view.render(opts);
+    return view.renderFile(opts);
     // console.log(view)
   } catch (err) {
     return err;
@@ -849,12 +786,12 @@ Template.prototype.render = function (name, options) {
  * @api public
  */
 
-Template.prototype.renderFile = function (filepath, context, settings) {
-  var opts = _.extend({imports: this.cache.tags}, settings);
-  this.lazyLayouts(opts);
+// Template.prototype.renderFile = function (filepath, context, settings) {
+//   var opts = _.extend({imports: this.cache.tags}, settings);
+//   this.lazyLayouts(opts);
 
-  return this.compileFile(filepath, opts)(context);
-};
+//   return this.compileFile(filepath, opts)(context);
+// };
 
 
 /**
