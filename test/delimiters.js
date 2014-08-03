@@ -37,15 +37,15 @@ describe('template delimiters:', function () {
 
 
   describe('.addDelims:', function () {
-    it('should set delimiters by `name` on `template.delims`:', function () {
+    it('should set delimiters by `name` on `template.cache.delims`:', function () {
       var template = new Template();
-      Object.keys(template.delims).should.have.length(2);
+      Object.keys(template.cache.delims).should.have.length(2);
       template.addDelims('hbs', ['{{', '}}']);
-      Object.keys(template.delims).should.have.length(3);
+      Object.keys(template.cache.delims).should.have.length(3);
       template.addDelims('lodash', ['<%', '%>']);
-      Object.keys(template.delims).should.have.length(4);
+      Object.keys(template.cache.delims).should.have.length(4);
       template.addDelims('square', ['[[', ']]']);
-      Object.keys(template.delims).should.have.length(5);
+      Object.keys(template.cache.delims).should.have.length(5);
     });
   });
 
@@ -103,25 +103,27 @@ describe('template delimiters:', function () {
       template.addDelims('hbs', ['{{', '}}']);
       template.addDelims('square', ['[[', ']]']);
 
+      // console.log(template.getDelims('square'))
+      // console.log(template)
 
       // default template delims
-      var a = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
-      a.should.equal('____Jon Schlinkert____[[= name ]]{{=name}}____Jon Schlinkert____{%= name %}');
+      var a = template.process('${ name }[[= name ]]{{= name }}<%= name %>{%= name %}', ctx);
+      a.should.equal('${ name }[[= name ]]{{= name }}____Jon Schlinkert____{%= name %}');
 
       template.setDelims('lodash');
-      var a = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
-      a.should.equal('____Jon Schlinkert____[[= name ]]{{=name}}____Jon Schlinkert____{%= name %}');
+      var a = template.process('${ name }[[= name ]]{{= name }}<%= name %>{%= name %}', ctx);
+      a.should.equal('${ name }[[= name ]]{{= name }}____Jon Schlinkert____{%= name %}');
 
       template.setDelims('es6');
-      var b = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
-      b.should.equal('____Jon Schlinkert____[[= name ]]{{=name}}____Jon Schlinkert____{%= name %}');
+      var b = template.process('${ name }[[= name ]]{{= name }}<%= name %>{%= name %}', ctx);
+      b.should.equal('____Jon Schlinkert____[[= name ]]{{= name }}<%= name %>{%= name %}');
 
       template.setDelims('square');
-      var c = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
-      c.should.equal('${ name }____Jon Schlinkert____{{=name}}<%= name %>{%= name %}');
+      var c = template.process('${ name }[[= name ]]{{= name }}<%= name %>{%= name %}', ctx);
+      c.should.equal('${ name }____Jon Schlinkert____{{= name }}<%= name %>{%= name %}');
 
       template.setDelims('hbs');
-      var d = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
+      var d = template.process('${ name }[[= name ]]{{= name }}<%= name %>{%= name %}', ctx);
       d.should.equal('${ name }[[= name ]]____Jon Schlinkert____<%= name %>{%= name %}');
     });
   });

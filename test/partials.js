@@ -13,21 +13,26 @@ var _ = require('lodash');
 
 
 describe('template partials', function () {
+
   describe('.partial():', function () {
     var template = new Template();
-
     it('should add a partial to `cache.partials`.', function () {
       template.partial('a', 'This is partial <%= a %>');
       template.partial('b', 'This is partial <%= b %>');
-
       var cache = Object.keys(template.cache.partials);
       cache.should.have.length(2);
+    });
+
+    it('should get partials from the cache', function () {
+      var a = template.partial('a');
+      var b = template.partial('b');
+      a.should.be.a.string;
+      b.should.be.a.string;
     });
   });
 
   describe('.partials():', function () {
     var template = new Template();
-
     template.partials({
       a: 'This is partial <%= a %>',
       b: 'This is partial <%= b %>',
@@ -38,6 +43,13 @@ describe('template partials', function () {
     it('should add multiple partials to `cache.partials`.', function () {
       var cache = Object.keys(template.cache.partials);
       cache.should.have.length(4);
+    });
+
+    it('should get partials from the cache', function () {
+      var a = template.partial('a');
+      var b = template.partial('b');
+      a.should.be.a.string;
+      b.should.be.a.string;
     });
 
     it('should process partials defined using a `<%= partial() %>` tag.', function () {
@@ -52,7 +64,6 @@ describe('template partials', function () {
       var b = template.process('<%= partial("b") %>', ctx);
       var c = template.process('<%= partial("c") %>', ctx);
       var d = template.process('<%= partial("d") %>', ctx);
-
       a.should.equal('This is partial A');
       b.should.equal('This is partial B');
       c.should.equal('This is partial C');

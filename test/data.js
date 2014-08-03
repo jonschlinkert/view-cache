@@ -32,12 +32,21 @@ describe('template data', function () {
       a.should.equal('This is partial A');
       b.should.equal('This is partial B');
     });
+
+    it('should extend the `context` with data.', function () {
+      template.data({a: 'C', b: 'D'});
+
+      var a = template.process('<%= partial("a") %>');
+      var b = template.process('<%= partial("b") %>');
+
+      a.should.equal('This is partial C');
+      b.should.equal('This is partial D');
+    });
   });
 
   describe('.partials():', function () {
     var template = new Template();
     template.set('layoutTag', 'blah');
-
 
     template.partials({
       a: 'This is partial <%= a %>',

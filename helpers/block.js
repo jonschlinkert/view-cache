@@ -1,7 +1,7 @@
-
+'use strict';
 
 /**
- * ## .makeTag
+ * ## .makeRegex
  *
  * Generate the default body tag to use as a fallback, based on the
  * `tag` and `delims` defined in the options.
@@ -11,7 +11,7 @@
  * @api private
  */
 
-var makeTag = function (options) {
+var makeRegex = function (options) {
   var opts = _.defaults({}, options, this.options);
   return [
     opts.delims[0],
@@ -22,9 +22,9 @@ var makeTag = function (options) {
 
 
 /**
- * ## .makeRegex
+ * ## .block
  *
- * Return a regular expression for the "body" tag based on the
+ * Return a regular expression for a block helper based on the
  * `tag` and `delims` defined in the options.
  *
  * @param  {Object} `options`
@@ -32,8 +32,8 @@ var makeTag = function (options) {
  * @api private
  */
 
-var makeRegex = function (options) {
+module.exports = function (options) {
   var opts = _.extend({sep: '\\s*'}, this.options, options);
-  var tag = this.makeTag(opts).replace(/[\]()[{|}]/g, '\\$&');
+  var tag = this.makeRegex(opts).replace(/[\]()[{|}]/g, '\\$&');
   return new RegExp(tag, opts.flags || 'g');
 };

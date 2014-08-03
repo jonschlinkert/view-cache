@@ -10,8 +10,8 @@
 var _ = require('lodash');
 var fs = require('fs');
 var util = require('util');
+var matter = require('gray-matter');
 var debug = require('debug')('template');
-var lookup = require('lookup-path');
 var Layouts = require('layouts');
 var Cache = require('config-cache');
 var Delimiters = require('delims');
@@ -39,12 +39,13 @@ var delimiters = new Delimiters();
 
 function Template(options) {
   Cache.call(this, options);
+  this.cache.delims = {};
+
   this.options = _.extend({}, options);
   this.data(this.options.locals || {});
-  this.delims = {};
-
   this.defaultConfig(this.options);
 }
+
 util.inherits(Template, Cache);
 
 
@@ -57,10 +58,14 @@ util.inherits(Template, Cache);
 Template.prototype.defaultConfig = function(opts) {
   this.set('cwd', opts.cwd || process.cwd());
 
+  this.set('layout', opts.layout);
+  this.set('locals', opts.locals || {});
+
   this.set('templates', opts.templates || {});
   this.set('partials', opts.partials || {});
   this.set('layouts', opts.layouts || {});
   this.set('helpers', opts.helpers || {});
+  this.set('delims', opts.delims || {});
 
   this.addDelims('default', ['<%', '%>']);
   this.addDelims('es6', ['${', '}'], {
@@ -74,7 +79,8 @@ Template.prototype.defaultConfig = function(opts) {
 /**
  * ## .lazyLayouts
  *
- * lazily add a `Layout` instance if it has not yet been added.
+ * Lazily add a `Layout` instance if it has not yet been added.
+ * Also normalizes settings to pass to the `layouts` library.
  *
  * We cannot instantiate `Layout` in the defaultConfig because
  * it reads settings which might be set until after init.
@@ -85,9 +91,12 @@ Template.prototype.defaultConfig = function(opts) {
 Template.prototype.lazyLayouts = function(options) {
   if (!this.layoutCache) {
     var opts = _.defaults({}, options, this.options);
-    opts.delims = opts.layoutDelims;
-    opts.tag = opts.layoutTag;
-    this.layoutCache = new Layouts(opts);
+    var settings = {};
+
+    settings.cache = opts.layouts;
+    settings.delims = opts.layoutDelims;
+    settings.tag = opts.layoutTag;
+    this.layoutCache = new Layouts(settings);
   }
 };
 
@@ -110,9 +119,9 @@ Template.prototype.lazyLayouts = function(options) {
  */
 
 Template.prototype.makeDelims = function (delims, options) {
-  return delimiters.templates(delims, _.defaults({
+  return _.extend(delimiters.templates(delims, _.defaults({
     escape: true
-  }, options));
+  }, options)), options);
 };
 
 
@@ -141,7 +150,7 @@ Template.prototype.makeDelims = function (delims, options) {
  */
 
 Template.prototype.addDelims = function (name, delims, opts) {
-  this.delims[name] = _.extend({}, this.makeDelims(delims, opts), opts);
+  this.cache.delims[name] = _.extend({}, this.makeDelims(delims, opts), opts);
   debug('adding delimiters: `' + name + '` %j', delims);
   return this;
 };
@@ -182,10 +191,11 @@ Template.prototype.setDelims = function(name) {
  */
 
 Template.prototype.getDelims = function(name) {
-  if(this.delims.hasOwnProperty(name)) {
-    return this.delims[name];
+  if(this.cache.delims.hasOwnProperty(name)) {
+    return this.cache.delims[name];
   }
-  return this.delims[this.currentDelims || 'default'];
+  name = this.currentDelims || 'default';
+  return this.cache.delims[name];
 };
 
 
@@ -215,6 +225,8 @@ Template.prototype.getDelims = function(name) {
  */
 
 Template.prototype.addHelper = function (key, value) {
+  debug('register helper %s', key);
+
   this.cache.helpers[key] = value;
   return this;
 };
@@ -230,8 +242,36 @@ Template.prototype.addHelper = function (key, value) {
 
 Template.prototype.defaultHelpers = function () {
   this.addHelper('partial', function (name) {
+    debug('loading partial %s', name);
+
     return this.cache.partials[name];
   }.bind(this));
+};
+
+
+/**
+ * ## .fileObject
+ *
+ * Normalize a template to a file object.
+ *
+ * @param  {String} `key`
+ * @param  {Object} `value`
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.fileObject = function (key, str) {
+  if (!str) {
+    if (typeof key === 'object') {
+      this.partials(key);
+      return this;
+    }
+    return this.cache.partials[key];
+  }
+  debug('adding partial %s', key);
+  this.cache.partials[key] = str;
+  return this;
 };
 
 
@@ -247,15 +287,16 @@ Template.prototype.defaultHelpers = function () {
  * @api public
  */
 
-Template.prototype.partial = function (key, value) {
-  if (arguments.length === 1) {
+Template.prototype.partial = function (key, str) {
+  if (!str) {
     if (typeof key === 'object') {
       this.partials(key);
       return this;
     }
     return this.cache.partials[key];
   }
-  this.cache.partials[key] = value;
+  debug('adding partial %s', key);
+  this.cache.partials[key] = str;
   return this;
 };
 
@@ -271,12 +312,14 @@ Template.prototype.partial = function (key, value) {
  * @api public
  */
 
-Template.prototype.partials = function () {
+Template.prototype.partials = function (obj) {
   if (arguments.length === 0) {
     return this.cache.partials;
   }
-  var args = [].slice.call(arguments);
-  _.extend.apply(_, [this.cache.partials].concat(args));
+  _.forIn(obj, function (value, key) {
+    debug('adding partial %s', key);
+    this.extend('partials.' + key, value);
+  }.bind(this));
   return this;
 };
 
@@ -293,7 +336,7 @@ Template.prototype.partials = function () {
  * @api public
  */
 
-Template.prototype.layout = function (key, str, data) {
+Template.prototype.layout = function (key, str, locals) {
   this.lazyLayouts();
 
   if (arguments.length === 1) {
@@ -304,8 +347,12 @@ Template.prototype.layout = function (key, str, data) {
     }
     return this.cache.layouts[key];
   }
-  this.cache.layouts[key] = {content: str, data: data || {}};
-  this.layoutCache.set(key, data, str);
+  debug('adding layout %s', key);
+  this.layoutCache.set(key, locals, str);
+  this.cache.layouts[key] = {
+    locals: locals,
+    content: str
+  };
   return this;
 };
 
@@ -321,17 +368,48 @@ Template.prototype.layout = function (key, str, data) {
  * @api public
  */
 
-Template.prototype.layouts = function () {
+Template.prototype.layouts = function (obj) {
   this.lazyLayouts();
 
   if (arguments.length === 0) {
     return this.cache.layouts;
   }
-
-  var args = [].slice.call(arguments);
-  _.extend.apply(_, [this.cache.layouts].concat(args));
+  _.forIn(obj, function (value, key) {
+    debug('adding layout %s', key);
+    this.cache.layouts[key] = this.cache.layouts[key] || {};
+    if (typeof value === 'string') {
+      this.cache.layouts[key] = {
+        content: value
+      };
+    } else {
+      this.cache.layouts[key] = value;
+    }
+  }.bind(this));
   this.layoutCache.set(this.cache.layouts);
   return this;
+};
+
+
+/**
+ * ## .parse
+ *
+ * Parse a string and extract yaml front matter.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.parse('---\ntitle: Home\n---\n<%= title %>');
+ * //=> {data: {title: "Home"}, content: "<%= title %>"}}
+ * ```
+ *
+ * @param  {String} `str` The string to parse.
+ * @param  {String} `Options` options to pass to [gray-matter].
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.parse = function (str, options) {
+  return matter(str, _.extend({autodetect: true}, options));
 };
 
 
@@ -357,7 +435,7 @@ Template.prototype.compile = function (str, settings) {
 
   return _.template(str, null, _.extend(this.options, {
     imports: this.cache.helpers
-  }, settings));
+  }, settings))
 };
 
 
@@ -379,8 +457,7 @@ Template.prototype.compile = function (str, settings) {
  */
 
 Template.prototype.compileFile = function (filepath, settings) {
-  var str = fs.readFileSync(filepath, 'utf8');
-  return this.compile(str, settings);
+  return this.compile(fs.readFileSync(filepath, 'utf8'), settings);
 };
 
 
@@ -395,9 +472,12 @@ Template.prototype.compileFile = function (filepath, settings) {
  * @api public
  */
 
-Template.prototype.render = function (str, settings) {
-  var ctx = _.extend({}, this.data(), settings && settings.locals);
-  return this.compile(str, settings)(ctx);
+Template.prototype.render = function (str, locals, settings) {
+  var tmpl = matter(str, {
+    autodetect: true
+  });
+  var ctx = _.extend({}, this.cache.data, locals, tmpl.data);
+  return this.compile(tmpl.content, settings)(ctx);
 };
 
 
@@ -447,29 +527,34 @@ Template.prototype.assertDelims = function (str, re) {
  */
 
 Template.prototype.process = function (str, locals, options) {
-  this.data(locals);
-
-  var ctx = _.extend({}, this.data());
   var opts = _.extend({}, this.options, options);
   this.lazyLayouts(opts);
 
+  var ctx = _.extend({}, this.cache.data, locals);
+
+  if (!options) {
+    _.extend(opts, ctx);
+  }
+
   var delims = this.getDelims(ctx.delims || opts.delims);
-  var original = str, layout, data = {};
+  var original = str, layout;
+  var data = {};
 
-  if (!ctx.layout) {
-    data = _.extend({}, ctx);
-  } else {
-    debug('using layout: %s', ctx.layout);
-    debug('using delims: %j', opts.layoutDelims);
+  if (ctx.layout || this.get('layout')) {
+    debug('building layout: %s', ctx.layout);
 
-    layout = this.layoutCache.inject(str, ctx.layout, {
+    var currentLayout = ctx.layout || this.get('layout');
+    layout = this.layoutCache.inject(str, currentLayout, {
       delims: opts.layoutDelims,
       tag: opts.layoutTag
     });
 
-    data = _.extend({}, ctx, layout.data);
-    str = layout.content;
+    debug('layout %j', layout);
+    data = _.extend({}, opts, layout.locals);
+    str = layout.content || str;
   }
+
+  _.extend(data, ctx);
 
   while (this.assertDelims(str, delims)) {
     str = this.render(str, data, delims);
