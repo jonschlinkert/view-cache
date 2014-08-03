@@ -8,24 +8,14 @@
 'use strict';
 
 var _ = require('lodash');
-var path = require('path');
+var fs = require('fs');
+var util = require('util');
 var debug = require('debug')('template');
+var lookup = require('lookup-path');
 var Layouts = require('layouts');
-var isAbsolute = require('is-absolute');
+var Cache = require('config-cache');
 var Delimiters = require('delims');
 var delimiters = new Delimiters();
-var View = require('./view');
-
-
-var noop = function (str) {
-  return str;
-};
-noop.render = function (str) {
-  return str;
-};
-noop.renderFile = function (str) {
-  return str;
-};
 
 
 /**
@@ -48,15 +38,16 @@ noop.renderFile = function (str) {
  */
 
 function Template(options) {
+  Cache.call(this, options);
   var opts = _.extend({}, options);
-  opts.cwd = opts.cwd || process.cwd();
-  this.context = opts.locals || {};
-  this.delims = opts.delims || {};
-  this.cache = opts.cache || {};
-  this.options = opts;
 
-  this.defaultConfig(this.options);
+  this.locals = opts.locals || {};
+  this.delims = opts.delims || {};
+
+  this.defaultConfig(opts);
+  this.options = opts;
 }
+util.inherits(Template, Cache);
 
 
 /**
@@ -67,16 +58,11 @@ function Template(options) {
 
 Template.prototype.defaultConfig = function(opts) {
   this.set('cwd', opts.cwd || process.cwd());
-  this._engine = noop;
 
   this.cache.templates = {};
-  this.engines = {};
-
-  this.engine('tmpl', noop);
   this.set('tags', opts.tags || {});
   this.set('layouts', opts.layouts || {});
   this.set('partials', opts.partials || {});
-  this.set('view engine', 'tmpl');
 
   this.addDelims('default', ['<%', '%>']);
   this.addDelims('es6', ['${', '}'], {
@@ -105,201 +91,6 @@ Template.prototype.lazyLayouts = function(options) {
     opts.tag = opts.layoutTag;
     this.layoutCache = new Layouts(opts);
   }
-};
-
-
-/**
- * ## .set
- *
- * Assign `value` to `key`.
- *
- * ```js
- * template.set(key, value);
- * ```
- *
- * {%= docs("set") %}
- *
- * @param {String} `key`
- * @param {*} `value`
- * @return {Template} for chaining
- * @api public
- */
-
-Template.prototype.set = function set(key, value) {
-  this.cache[key] = value;
-  return this;
-};
-
-
-/**
- * ## .get
- *
- * Return the stored value of `key`.
- *
- * ```js
- * template.set('foo', 'bar');
- * template.get('foo');
- * // => "bar"
- * ```
- *
- * @param {*} `key`
- * @return {*}
- * @api public
- */
-
-Template.prototype.get = function (key) {
-  return this.cache[key];
-};
-
-
-/**
- * ## .constant
- *
- * Set a constant on the cache.
- *
- * **Example**
- *
- * ```js
- * template.constant('root', '/foo/bar/');
- * ```
- *
- * @method `constant`
- * @param {String} `key`
- * @param {*} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api private
- */
-
-Template.prototype.constant = function(key, value, obj) {
-  var getter;
-  if (typeof value !== 'function'){
-    getter = function() {
-      return value;
-    };
-  } else {
-    getter = value;
-  }
-  obj = obj || this;
-  obj.__defineGetter__(key, getter);
-  return this;
-};
-
-
-/**
- * ## .extend
- *
- * Extend the `cache` with the given object. This method is chainable.
- *
- * **Example**
- *
- * ```js
- * cache
- *   .extend({foo: 'bar'}, {baz: 'quux'});
- *   .extend({fez: 'bang'});
- * ```
- *
- * @chainable
- * @method extend
- * @param {Arguments} Objects to extend on to the `cache`.
- * @return {Cache} for chaining
- * @api public
- */
-
-Template.prototype.extend = function() {
-  var args = [].slice.call(arguments);
-  _.extend.apply(_, [this].concat(args));
-  return this;
-};
-
-/**
- * Check if `setting` is enabled (truthy).
- *
- *    template.enabled('foo')
- *    // => false
- *
- *    template.enable('foo')
- *    template.enabled('foo')
- *    // => true
- *
- * @param {String} setting
- * @return {Boolean}
- * @api public
- */
-
-Template.prototype.enabled = function(setting){
-  return !!this.set(setting);
-};
-
-/**
- * Check if `setting` is disabled.
- *
- *    template.disabled('foo')
- *    // => true
- *
- *    template.enable('foo')
- *    template.disabled('foo')
- *    // => false
- *
- * @param {String} setting
- * @return {Boolean}
- * @api public
- */
-
-Template.prototype.disabled = function(setting){
-  return !this.set(setting);
-};
-
-/**
- * Enable `setting`.
- *
- * @param {String} setting
- * @return {app} for chaining
- * @api public
- */
-
-Template.prototype.enable = function(setting){
-  return this.set(setting, true);
-};
-
-/**
- * Disable `setting`.
- *
- * @param {String} setting
- * @return {app} for chaining
- * @api public
- */
-
-Template.prototype.disable = function(setting){
-  return this.set(setting, false);
-};
-
-
-
-/**
- * ## .data
- *
- * Extend the `context` with the given object. This method is chainable.
- *
- * **Example**
- *
- * ```js
- * cache
- *   .data({foo: 'bar'}, {baz: 'quux'});
- *   .data({fez: 'bang'});
- * ```
- *
- * @chainable
- * @method data
- * @param {Arguments} Objects to extend on to the `context` object.
- * @return {Cache} for chaining
- * @api public
- */
-
-Template.prototype.data = function() {
-  var args = [].slice.call(arguments);
-  _.extend.apply(_, [this.context].concat(args));
-  return this;
 };
 
 
@@ -352,8 +143,8 @@ Template.prototype.makeDelims = function (delims, layoutDelims, options) {
  */
 
 Template.prototype.addDelims = function (name, delimiterArray, options) {
-  var delims = _.extend({}, this.makeDelims(delimiterArray, options), options);
-  this.constant(name, delims, this.delims);
+  var delims = this.makeDelims(delimiterArray, options);
+  this.set('delims.' + name, _.extend({}, delims, options));
   return this;
 };
 
@@ -544,43 +335,6 @@ Template.prototype.layouts = function () {
 
 
 /**
- * ## .engine
- *
- * Register the given view engine callback `fn` as `ext`.
- *
- *
- * @param {String} `ext`
- * @param {Function|Object} `fn` or `options`
- * @param {Object} `options`
- * @return {Template} for chaining
- * @api public
- */
-
-Template.prototype.engine = function(ext, fn, options) {
-  var engine = {};
-  if (typeof fn === 'function') {
-    engine = fn;
-  } else if (typeof fn === 'object') {
-    engine = fn;
-    engine.renderFile = fn.renderFile || fn.__express;
-    engine.render = fn.render;
-  }
-  engine.options = options || {};
-
-  if (typeof engine.render !== 'function') {
-    throw new Error('Engines are expected to have a `render` method.');
-  }
-
-  if (ext[0] !== '.') {
-    ext = '.' + ext;
-  }
-
-  this.engines[ext] = engine;
-  return this;
-};
-
-
-/**
  * ## .compile
  *
  * Compile a template string.
@@ -632,9 +386,9 @@ Template.prototype.compileFile = function (filepath, settings) {
 /**
  * ## .render
  *
- * Render a template `str` with the given `context` and `options`.
+ * Render a template `str` with the given `locals` and `options`.
  *
- * @param  {Object} `context` Data to pass to registered view engines.
+ * @param  {Object} `locals` Data to pass to registered view engines.
  * @param  {Object} `options` Options to pass to registered view engines.
  * @return {String}
  * @api public
@@ -648,9 +402,9 @@ Template.prototype.render = function (str, locals, settings) {
 /**
  * ## .renderFile
  *
- * Render a template `str` with the given `context` and `options`.
+ * Render a template `str` with the given `locals` and `options`.
  *
- * @param  {Object} `context` Data to pass to registered view engines.
+ * @param  {Object} `locals` Data to pass to registered view engines.
  * @param  {Object} `options` Options to pass to registered view engines.
  * @return {String}
  * @api public
@@ -682,16 +436,16 @@ Template.prototype.assertDelims = function (str, re) {
 /**
  * ## .process
  *
- * Process a template `str` with the given `context` and `settings`.
+ * Process a template `str` with the given `locals` and `settings`.
  *
  * @param  {String} `str`
- * @param  {Object} `context`
+ * @param  {Object} `locals`
  * @return {String}
  * @api public
  */
 
-Template.prototype.process = function (str, context, options) {
-  var ctx = _.extend({}, this.context, context);
+Template.prototype.process = function (str, locals, options) {
+  var ctx = _.extend({}, this.locals, locals);
   var opts = _.extend({}, this.options, options);
   this.lazyLayouts(opts);
 

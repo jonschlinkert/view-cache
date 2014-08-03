@@ -46,6 +46,8 @@
   },
   "dependencies": {
     "arrayify-compact": "^0.1.0",
+    "config-cache": "^0.1.0",
+    "debug": "^1.0.4",
     "delims": "^0.3.0",
     "globby": "^0.1.1",
     "is-absolute": "^0.1.4",
