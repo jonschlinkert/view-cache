@@ -94,7 +94,7 @@ describe('template delimiters:', function () {
     });
   });
 
-  xdescribe('.setDelims:', function () {
+  describe('.setDelims:', function () {
     it('should use the currently set delims:', function () {
       var template = new Template();
       var ctx = {name: '____Jon Schlinkert____'};

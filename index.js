@@ -86,7 +86,7 @@ Template.prototype.lazyLayouts = function(options) {
   if (!this.layoutCache) {
     var opts = _.defaults({}, options, this.options);
     opts.delims = opts.layoutDelims;
-    opts.helper = opts.layoutTag;
+    opts.tag = opts.layoutTag;
     this.layoutCache = new Layouts(opts);
   }
 };
@@ -109,7 +109,7 @@ Template.prototype.lazyLayouts = function(options) {
  * @api private
  */
 
-Template.prototype.makeDelims = function (delims, layoutDelims, options) {
+Template.prototype.makeDelims = function (delims, options) {
   return delimiters.templates(delims, _.defaults({
     escape: true
   }, options));
@@ -135,14 +135,14 @@ Template.prototype.makeDelims = function (delims, layoutDelims, options) {
  * [delims]: https://github.com/jonschlinkert/delims "Generate regex for delimiters"
  *
  * @param {String} `name` The name to use for the stored delimiters.
- * @param {Array} `delimiterArray` Array of delimiter strings. See [delims] for details.
- * @param {Object} `options` Options to pass to [delims].
+ * @param {Array} `delims` Array of delimiter strings. See [delims] for details.
+ * @param {Object} `opts` Options to pass to [delims].
  * @api public
  */
 
-Template.prototype.addDelims = function (name, delimiterArray, options) {
-  this.delims[name] = _.extend({}, this.makeDelims(delimiterArray, options), options);
-  debug('add delimiters:', name);
+Template.prototype.addDelims = function (name, delims, opts) {
+  this.delims[name] = _.extend({}, this.makeDelims(delims, opts), opts);
+  debug('adding delimiters: `' + name + '` %j', delims);
   return this;
 };
 
@@ -336,42 +336,6 @@ Template.prototype.layouts = function () {
 
 
 /**
- * ## .engine
- *
- * Register the given view engine callback `fn` as `ext`.
- *
- *
- * @param {String} `ext`
- * @param {Function|Object} `fn` or `options`
- * @param {Object} `options`
- * @return {Template} for chaining
- * @api public
- */
-
-Template.prototype.engine = function(ext, fn, options) {
-  var engine = {};
-  if (typeof fn === 'function') {
-    engine = fn;
-  } else if (typeof fn === 'object') {
-    engine = fn;
-    engine.renderFile = fn.renderFile || fn.__express;
-    engine.render = fn.render;
-  }
-  engine.options = options || {};
-
-  if (typeof engine.render !== 'function') {
-    throw new Error('Engines are expected to have a `render` method.');
-  }
-
-  if (ext !== '*' && ext[0] !== '.') {
-    ext = '.' + ext;
-  }
-  this.engines[ext] = engine;
-  return this;
-};
-
-
-/**
  * ## .compile
  *
  * Compile a template string.
@@ -496,6 +460,7 @@ Template.prototype.process = function (str, locals, options) {
     data = _.extend({}, ctx);
   } else {
     debug('using layout: %s', ctx.layout);
+    debug('using delims: %j', opts.layoutDelims);
 
     layout = this.layoutCache.inject(str, ctx.layout, {
       delims: opts.layoutDelims,
