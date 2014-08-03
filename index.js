@@ -41,6 +41,7 @@ function Template(options) {
   Cache.call(this, options);
   this.options = _.extend({}, options);
   this.data(this.options.locals || {});
+  this.delims = {};
 
   this.defaultConfig(this.options);
 }
@@ -59,7 +60,6 @@ Template.prototype.defaultConfig = function(opts) {
   this.set('templates', opts.templates || {});
   this.set('partials', opts.partials || {});
   this.set('layouts', opts.layouts || {});
-  this.set('delims', opts.delims || {});
   this.set('helpers', opts.helpers || {});
 
   this.addDelims('default', ['<%', '%>']);
@@ -141,7 +141,7 @@ Template.prototype.makeDelims = function (delims, layoutDelims, options) {
  */
 
 Template.prototype.addDelims = function (name, delimiterArray, options) {
-  this.cache.delims[name] = this.makeDelims(delimiterArray, options);
+  this.delims[name] = _.extend({}, this.makeDelims(delimiterArray, options), options);
   debug('add delimiters:', name);
   return this;
 };
@@ -167,7 +167,6 @@ Template.prototype.addDelims = function (name, delimiterArray, options) {
  */
 
 Template.prototype.setDelims = function(name) {
-  debug('set delimiters:', name);
   return this.currentDelims = name;
 };
 
@@ -183,10 +182,10 @@ Template.prototype.setDelims = function(name) {
  */
 
 Template.prototype.getDelims = function(name) {
-  if(this.cache.delims.hasOwnProperty(name)) {
-    return this.cache.delims[name];
+  if(this.delims.hasOwnProperty(name)) {
+    return this.delims[name];
   }
-  return this.cache.delims[this.currentDelims || 'default'];
+  return this.delims[this.currentDelims || 'default'];
 };
 
 
@@ -417,41 +416,7 @@ Template.prototype.compile = function (str, settings) {
 
 Template.prototype.compileFile = function (filepath, settings) {
   var str = fs.readFileSync(filepath, 'utf8');
-  return this.cache.templates[filepath] = this.compile(str, settings);
-};
-
-
-/**
- * ## .compileFiles
- *
- * Pass a filepath, array of filepaths or glob patterns and compile each file.
- *
- * **Example:**
- *
- * ```js
- * template.compileFiles('*.tmpl');
- * ```
- *
- * @param  {Array|String} `patterns` String or array of file paths or glob patterns.
- * @param  {Array} `options` Options to pass to globby
- * @return {Array}
- * @api public
- */
-
-Template.prototype.compileFiles = function (patterns, options) {
-  var opts = _.extend(this.options, options);
-
-  if (typeof patterns === 'string' && isAbsolute(patterns)) {
-    if (this.cache.templates.hasOwnProperty(patterns)) {
-      return this.cache.templates[patterns];
-    }
-    return this.compileFile(patterns, opts);
-  }
-
-  glob.sync(patterns, opts).forEach(function (filepath) {
-    this.compileFile(filepath, options);
-  }.bind(this));
-  return this;
+  return this.compile(str, settings);
 };
 
 
@@ -466,8 +431,9 @@ Template.prototype.compileFiles = function (patterns, options) {
  * @api public
  */
 
-Template.prototype.render = function (str, locals, settings) {
-  return this.compile(str, settings)(locals);
+Template.prototype.render = function (str, settings) {
+  var ctx = _.extend({}, this.data(), settings && settings.locals);
+  return this.compile(str, settings)(ctx);
 };
 
 
@@ -530,10 +496,12 @@ Template.prototype.process = function (str, locals, options) {
     data = _.extend({}, ctx);
   } else {
     debug('using layout: %s', ctx.layout);
+
     layout = this.layoutCache.inject(str, ctx.layout, {
       delims: opts.layoutDelims,
-      helper: opts.layoutTag
+      tag: opts.layoutTag
     });
+
     data = _.extend({}, ctx, layout.data);
     str = layout.content;
   }

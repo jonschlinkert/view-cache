@@ -37,15 +37,15 @@ describe('template delimiters:', function () {
 
 
   describe('.addDelims:', function () {
-    it('should set delimiters by `name` on `template.cache.delims`:', function () {
+    it('should set delimiters by `name` on `template.delims`:', function () {
       var template = new Template();
-      Object.keys(template.cache.delims).should.have.length(2);
+      Object.keys(template.delims).should.have.length(2);
       template.addDelims('hbs', ['{{', '}}']);
-      Object.keys(template.cache.delims).should.have.length(3);
+      Object.keys(template.delims).should.have.length(3);
       template.addDelims('lodash', ['<%', '%>']);
-      Object.keys(template.cache.delims).should.have.length(4);
+      Object.keys(template.delims).should.have.length(4);
       template.addDelims('square', ['[[', ']]']);
-      Object.keys(template.cache.delims).should.have.length(5);
+      Object.keys(template.delims).should.have.length(5);
     });
   });
 
@@ -94,7 +94,7 @@ describe('template delimiters:', function () {
     });
   });
 
-  describe('.setDelims:', function () {
+  xdescribe('.setDelims:', function () {
     it('should use the currently set delims:', function () {
       var template = new Template();
       var ctx = {name: '____Jon Schlinkert____'};
@@ -106,12 +106,15 @@ describe('template delimiters:', function () {
 
       // default template delims
       var a = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
-      a.should.equal('${ name }[[= name ]]{{=name}}____Jon Schlinkert____{%= name %}');
+      a.should.equal('____Jon Schlinkert____[[= name ]]{{=name}}____Jon Schlinkert____{%= name %}');
 
-      // defined in the constructor
+      template.setDelims('lodash');
+      var a = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
+      a.should.equal('____Jon Schlinkert____[[= name ]]{{=name}}____Jon Schlinkert____{%= name %}');
+
       template.setDelims('es6');
       var b = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
-      b.should.equal('____Jon Schlinkert____[[= name ]]{{=name}}<%= name %>{%= name %}');
+      b.should.equal('____Jon Schlinkert____[[= name ]]{{=name}}____Jon Schlinkert____{%= name %}');
 
       template.setDelims('square');
       var c = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
@@ -120,11 +123,6 @@ describe('template delimiters:', function () {
       template.setDelims('hbs');
       var d = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
       d.should.equal('${ name }[[= name ]]____Jon Schlinkert____<%= name %>{%= name %}');
-
-      // same as default
-      template.setDelims('lodash');
-      var e = template.process('${ name }[[= name ]]{{=name}}<%= name %>{%= name %}', ctx);
-      e.should.equal('${ name }[[= name ]]{{=name}}____Jon Schlinkert____{%= name %}');
     });
   });
 
@@ -138,9 +136,16 @@ describe('template delimiters:', function () {
 
       it('should add a `layoutDelims` property to the delimiters object.', function () {
         template.setDelims('a');
-        template.getDelims().should.have.property('layoutDelims');
-        console.log(template);
         var a = template.getDelims();
+        a.should.have.property('layoutDelims');
+        a.should.have.property('tag');
+        a.tag.should.equal('foo');
+
+        template.setDelims('b');
+        var b = template.getDelims();
+        b.should.have.property('layoutDelims');
+        b.should.have.property('tag');
+        b.tag.should.equal('bar');
       });
 
       it('should add a `layoutDelims` property to the delimiters object.', function () {
