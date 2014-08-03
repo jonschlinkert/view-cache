@@ -1,7 +1,7 @@
 {
   "name": "view-cache",
-  "description": "Cache, parse, compile and render partials and layouts, and easily add custom template helpers/tags for Lo-Dash.",
-  "version": "0.1.0",
+  "description": "Cache, parse and render partials and layouts, and easily add custom template helpers.",
+  "version": "0.1.1",
   "homepage": "https://github.com/jonschlinkert/view-cache",
   "author": {
     "name": "Jon Schlinkert",
