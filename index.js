@@ -9,7 +9,7 @@
 
 var _ = require('lodash');
 var path = require('path');
-var glob = require('globby');
+var debug = require('debug')('template');
 var Layouts = require('layouts');
 var isAbsolute = require('is-absolute');
 var Delimiters = require('delims');
@@ -598,12 +598,11 @@ Template.prototype.engine = function(ext, fn, options) {
  */
 
 Template.prototype.compile = function (str, settings) {
-  var opts = _.extend({}, this.options, settings);
-  opts.ext = opts.ext || this.ext;
   this.lazyLayouts(settings);
 
-  var view = new View(opts.filename, opts);
-  return view.compile(str, opts);
+  return _.template(str, null, _.extend(this.options, {
+    imports: this.cache.tags
+  }, settings));
 };
 
 
@@ -624,84 +623,9 @@ Template.prototype.compile = function (str, settings) {
  * @api public
  */
 
-Template.prototype.compileFile = function (filepath, options) {
-  var opts = _.extend(this.options, options);
-  this.lazyLayouts(opts);
-
-  opts.ext = path.extname(filepath);
-  opts.filename = filepath;
-
-  var file = this.engines[opts.ext].renderFile(filepath, null, opts);
-  return this.cache.templates[filepath] = file;
-};
-
-
-/**
- * ## .compileFiles
- *
- * Pass a filepath, array of filepaths or glob patterns and compile each file.
- *
- * **Example:**
- *
- * ```js
- * template.compileFiles('*.tmpl');
- * ```
- *
- * @param  {Array|String} `patterns` String or array of file paths or glob patterns.
- * @param  {Array} `options` Options to pass to globby
- * @return {Array}
- * @api public
- */
-
-Template.prototype.compileFiles = function (patterns, options) {
-  var opts = _.extend(this.options, options);
-
-  if (typeof patterns === 'string' && isAbsolute(patterns)) {
-    if (this.cache.templates.hasOwnProperty(patterns)) {
-      return this.cache.templates[patterns];
-    }
-    return this.compileFile(patterns, opts);
-  }
-
-  glob.sync(patterns, opts).forEach(function (filepath) {
-    filepath = path.resolve(opts.cwd, filepath);
-    this.compileFile(filepath, options);
-  }.bind(this));
-  return this;
-};
-
-
-/**
- * ## .cache
- *
- * Pass a filepath, array of filepaths or glob patterns and cache each file.
- *
- * **Example:**
- *
- * ```js
- * template.cache('<%= foo %>', {delims: ['{%', '%}']});
- * ```
- *
- * @param  {Array|String} `patterns` File path(s) or glob patterns.
- * @param  {Array} `options`
- * @return {Array}
- * @api public
- */
-
-Template.prototype.cacheView = function (patterns, options) {
-  var opts = _.extend(this.options, options);
-  if (typeof patterns === 'string' && isAbsolute(patterns)) {
-    if (this.cache.templates.hasOwnProperty(patterns)) {
-      return this.cache.templates[patterns];
-    }
-    return this.compileFile(patterns, this.options);
-  }
-
-  glob.sync(patterns, this.options).forEach(function(filepath) {
-    filepath = path.resolve(this.options.cwd, filepath);
-    this.cacheView(filepath, options);
-  }.bind(this));
-  return this;
+Template.prototype.compileFile = function (filepath, settings) {
+  var str = fs.readFileSync(filepath, 'utf8');
+  return this.compile(str, settings)
 };
 
 
@@ -716,61 +640,8 @@ Template.prototype.cacheView = function (patterns, options) {
  * @api public
  */
 
-Template.prototype.render = function (str, context, options) {
-  this.lazyLayouts(options);
-  var settings = _.extend({imports: this.cache.tags}, settings);
-  return this.compile(str, settings)(context);
-};
-
-
-Template.prototype.renderFile = function (name, options) {
-  options = options || {};
-  this.lazyLayouts(options);
-
-  var opts = {};
-  var cache = this.cache.templates;
-  var engines = this.engines;
-  var view;
-
-  _.extend(opts, this.locals);
-  _.extend(opts, options);
-
-    // set .cache unless explicitly provided
-  opts.cache = opts.cache == null
-    ? this.enabled('view cache')
-    : opts.cache;
-
-  // primed cache
-  if (opts.cache) {
-    view = cache[name];
-  }
-
-  if (!view) {
-    view = new View(name, {
-      defaultEngine: this.get('view engine'),
-      cwd: this.get('cwd'),
-      engines: engines,
-      imports: this.cache.tags
-    });
-
-    if (!view.path) {
-      var err = new Error('.render() could not find "' + name + '".');
-      err.view = view;
-      return err;
-    }
-
-    // prime the cache
-    if (opts.cache) {
-      cache[name] = view;
-    }
-  }
-
-  try {
-    return view.renderFile(opts);
-    // console.log(view)
-  } catch (err) {
-    return err;
-  }
+Template.prototype.render = function (str, locals, settings) {
+  return this.compile(str, settings)(locals);
 };
 
 
@@ -785,12 +656,9 @@ Template.prototype.renderFile = function (name, options) {
  * @api public
  */
 
-// Template.prototype.renderFile = function (filepath, context, settings) {
-//   var opts = _.extend({imports: this.cache.tags}, settings);
-//   this.lazyLayouts(opts);
-
-//   return this.compileFile(filepath, opts)(context);
-// };
+Template.prototype.renderFile = function (filepath, locals, settings) {
+  return this.compileFile(filepath, settings)(locals);
+};
 
 
 /**
@@ -829,6 +697,8 @@ Template.prototype.process = function (str, context, options) {
 
   var delims = this.getDelims(ctx.delims || opts.delims);
   var original = str, layout, data = {};
+
+  debug('delimiters:', delims)
 
   if (!ctx.layout) {
     data = _.extend({}, ctx);
