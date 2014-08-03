@@ -18,7 +18,6 @@ describe('template compileFile:', function () {
   describe('.compileFile()', function () {
     it('should read a file and compile templates.', function () {
       var template = new Template();
-      template.engine('tmpl', engines.lodash);
 
       var compiled = template.compile('test/fixtures/no-matter.tmpl');
       console.log(compiled);

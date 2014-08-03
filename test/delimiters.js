@@ -37,15 +37,15 @@ describe('template delimiters:', function () {
 
 
   describe('.addDelims:', function () {
-    it('should set delimiters by `name` on `template.delims`:', function () {
+    it('should set delimiters by `name` on `template.cache.delims`:', function () {
       var template = new Template();
-      Object.keys(template.delims).should.have.length(2);
+      Object.keys(template.cache.delims).should.have.length(2);
       template.addDelims('hbs', ['{{', '}}']);
-      Object.keys(template.delims).should.have.length(3);
+      Object.keys(template.cache.delims).should.have.length(3);
       template.addDelims('lodash', ['<%', '%>']);
-      Object.keys(template.delims).should.have.length(4);
+      Object.keys(template.cache.delims).should.have.length(4);
       template.addDelims('square', ['[[', ']]']);
-      Object.keys(template.delims).should.have.length(5);
+      Object.keys(template.cache.delims).should.have.length(5);
     });
   });
 
@@ -139,6 +139,7 @@ describe('template delimiters:', function () {
       it('should add a `layoutDelims` property to the delimiters object.', function () {
         template.setDelims('a');
         template.getDelims().should.have.property('layoutDelims');
+        console.log(template);
         var a = template.getDelims();
       });
 

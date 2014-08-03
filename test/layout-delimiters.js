@@ -18,6 +18,7 @@ describe('template layout delimiters', function () {
       layoutDelims: ['{%', '%}'],
       layoutTag: 'foo'
     });
+
     var ctx = {
       a: 'FIRST',
       b: 'SECOND',
@@ -26,10 +27,10 @@ describe('template layout delimiters', function () {
       layout: 'a'
     };
 
-    template.layout('base', '\nbase\n{% foo %}\nbase');
+    template.layout('last', '\nlast\n{% foo %}\nlast');
     template.layout('a', '\nBEFORE <%= a %> {% foo %}\nAFTER <%= a %>', {layout: 'b'});
     template.layout('b', '\nBEFORE <%= b %> {% foo %}\nAFTER <%= b %>', {layout: 'c'});
-    template.layout('c', '\nBEFORE <%= c %> {% foo %}\nAFTER <%= c %>', {layout: 'base'});
+    template.layout('c', '\nBEFORE <%= c %> {% foo %}\nAFTER <%= c %>', {layout: 'last'});
 
 
     template.partial('a', 'This is partial <%= a %>');
@@ -44,10 +45,10 @@ describe('template layout delimiters', function () {
     var c = template.process('<%= partial("c") %>', ctx);
     var d = template.process('<%= partial("d") %>', ctx);
 
-    a.should.equal('\nbase\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FIRST\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nbase');
-    b.should.equal('\nbase\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial SECOND\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nbase');
-    c.should.equal('\nbase\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial THIRD\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nbase');
-    d.should.equal('\nbase\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FOURTH\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nbase');
+    a.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FIRST\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+    b.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial SECOND\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+    c.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial THIRD\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+    d.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FOURTH\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
   });
 
   it('layout delimiters should not be space sensitive:', function () {
@@ -56,10 +57,10 @@ describe('template layout delimiters', function () {
       layoutTag: 'foo'
     });
 
-    template.layout('base', '\nbase\n{% foo %}\nbase');
+    template.layout('last', '\nlast\n{% foo %}\nlast');
     template.layout('a', '\nBEFORE <%= a %> {% foo %}\nAFTER <%= a %>', {layout: 'b'});
     template.layout('b', '\nBEFORE <%= b %> {% foo %}\nAFTER <%= b %>', {layout: 'c'});
-    template.layout('c', '\nBEFORE <%= c %> {% foo %}\nAFTER <%= c %>', {layout: 'base'});
+    template.layout('c', '\nBEFORE <%= c %> {% foo %}\nAFTER <%= c %>', {layout: 'last'});
 
     var ctx = {
       a: 'FIRST',
@@ -81,9 +82,9 @@ describe('template layout delimiters', function () {
     var c = template.process('<%= partial("c") %>', ctx);
     var d = template.process('<%= partial("d") %>', ctx);
 
-    a.should.equal('\nbase\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FIRST\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nbase');
-    b.should.equal('\nbase\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial SECOND\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nbase');
-    c.should.equal('\nbase\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial THIRD\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nbase');
-    d.should.equal('\nbase\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FOURTH\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nbase');
+    a.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FIRST\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+    b.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial SECOND\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+    c.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial THIRD\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+    d.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FOURTH\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
   });
 });
