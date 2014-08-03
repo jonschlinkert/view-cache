@@ -103,9 +103,6 @@ describe('template delimiters:', function () {
       template.addDelims('hbs', ['{{', '}}']);
       template.addDelims('square', ['[[', ']]']);
 
-      // console.log(template.getDelims('square'))
-      // console.log(template)
-
       // default template delims
       var a = template.process('${ name }[[= name ]]{{= name }}<%= name %>{%= name %}', ctx);
       a.should.equal('${ name }[[= name ]]{{= name }}____Jon Schlinkert____{%= name %}');

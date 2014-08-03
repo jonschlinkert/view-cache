@@ -391,6 +391,24 @@ Template.prototype.layouts = function (obj) {
 
 
 /**
+ * ## .assertDelims
+ *
+ * Return `true` if template delimiters exist in `str`.
+ *
+ * @param  {String} `str`
+ * @return {Boolean}
+ * @api private
+ */
+
+Template.prototype.assertDelims = function (str, re) {
+  return re ? str.indexOf(re.delims[0]) !== -1 &&
+    str.indexOf(re.delims[1]) !== -1 :
+    str.indexOf('<%') !== -1 ||
+    str.indexOf('${') !== -1;
+};
+
+
+/**
  * ## .parse
  *
  * Parse a string and extract yaml front matter.
@@ -414,50 +432,18 @@ Template.prototype.parse = function (str, options) {
 
 
 /**
- * ## .compile
+ * ## .renderFile
  *
- * Compile a template string.
+ * Render a template `str` with the given `locals` and `options`.
  *
- * **Example:**
- *
- * ```js
- * template.compile('<%= foo %>');
- * ```
- *
- * @param  {String} `str` The actual template string.
- * @param  {String} `settings` Delimiters to pass to Lo-dash.
+ * @param  {Object} `locals` Data to pass to registered view engines.
+ * @param  {Object} `options` Options to pass to registered view engines.
  * @return {String}
  * @api public
  */
 
-Template.prototype.compile = function (str, settings) {
-  this.lazyLayouts(settings);
-
-  return _.template(str, null, _.extend(this.options, {
-    imports: this.cache.helpers
-  }, settings))
-};
-
-
-/**
- * ## .compileFile
- *
- * Compile a template from a filepath.
- *
- * **Example:**
- *
- * ```js
- * template.compileFile('templates/index.tmpl');
- * ```
- *
- * @param  {String} `filepath`
- * @param  {Object} `options`
- * @return {String}
- * @api public
- */
-
-Template.prototype.compileFile = function (filepath, settings) {
-  return this.compile(fs.readFileSync(filepath, 'utf8'), settings);
+Template.prototype.renderFile = function (filepath, locals, settings) {
+  return this.render(fs.readFileSync(filepath, 'utf8'), locals, settings);
 };
 
 
@@ -473,91 +459,57 @@ Template.prototype.compileFile = function (filepath, settings) {
  */
 
 Template.prototype.render = function (str, locals, settings) {
-  var tmpl = matter(str, {
-    autodetect: true
-  });
-  var ctx = _.extend({}, this.cache.data, locals, tmpl.data);
-  return this.compile(tmpl.content, settings)(ctx);
+  return _.template(str, locals, settings);
 };
 
 
 /**
- * ## .renderFile
- *
- * Render a template `str` with the given `locals` and `options`.
- *
- * @param  {Object} `locals` Data to pass to registered view engines.
- * @param  {Object} `options` Options to pass to registered view engines.
- * @return {String}
- * @api public
- */
-
-Template.prototype.renderFile = function (filepath, locals, settings) {
-  return this.compileFile(filepath, settings)(locals);
-};
-
-
-/**
- * ## .assertDelims
- *
- * Return `true` if template delimiters exist in `str`.
- *
- * @param  {String} `str`
- * @return {Boolean}
- * @api private
- */
-
-Template.prototype.assertDelims = function (str, re) {
-  return re ? str.indexOf(re.delims[0]) !== -1 &&
-    str.indexOf(re.delims[1]) !== -1 :
-    str.indexOf('<%') !== -1 ||
-    str.indexOf('${') !== -1;
-};
-
-
-/**
- * ## .process
+ * ## .render
  *
  * Process a template `str` with the given `locals` and `settings`.
  *
- * @param  {String} `str`
- * @param  {Object} `locals`
+ * @param  {String} `str` The template string.
+ * @param  {Object} `locals` Optionally pass locals to use as context.
+ * @param  {Object} `settings` Optionally pass the template delimiters to use.
  * @return {String}
  * @api public
  */
 
-Template.prototype.process = function (str, locals, options) {
-  var opts = _.extend({}, this.options, options);
+Template.prototype.process = function (str, locals, settings) {
+  var opts = _.extend({}, this.options);
+  settings = settings || {};
+
+  var tmpl = this.parse(str);
   this.lazyLayouts(opts);
 
-  var ctx = _.extend({}, this.cache.data, locals);
+  var ctx = this.cache.data;
+  this.extendData(opts);
+  this.extendData(locals);
+  this.extendData(tmpl.data);
 
-  if (!options) {
-    _.extend(opts, ctx);
-  }
-
-  var delims = this.getDelims(ctx.delims || opts.delims);
-  var original = str, layout;
-  var data = {};
+  var delims = this.getDelims(settings.delims || ctx.delims);
+  var original = str;
+  var layout;
 
   if (ctx.layout || this.get('layout')) {
     debug('building layout: %s', ctx.layout);
 
     var currentLayout = ctx.layout || this.get('layout');
     layout = this.layoutCache.inject(str, currentLayout, {
+      locals: ctx,
       delims: opts.layoutDelims,
       tag: opts.layoutTag
     });
 
     debug('layout %j', layout);
-    data = _.extend({}, opts, layout.locals);
+
+    this.extendData(layout.locals);
     str = layout.content || str;
   }
 
-  _.extend(data, ctx);
-
+  settings = _.extend({imports: this.cache.helpers}, delims);
   while (this.assertDelims(str, delims)) {
-    str = this.render(str, data, delims);
+    str = this.render(str, ctx, settings);
     if (str === original) {
       break;
     }
