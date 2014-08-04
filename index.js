@@ -9,7 +9,9 @@
 
 var _ = require('lodash');
 var fs = require('fs');
+var path = require('path');
 var util = require('util');
+var glob = require('globby');
 var matter = require('gray-matter');
 var debug = require('debug')('template');
 var Layouts = require('layouts');
@@ -42,7 +44,6 @@ function Template(options) {
   this.cache.delims = {};
 
   this.options = _.extend({}, options);
-  this.data(this.options.locals || {});
   this.defaultConfig(this.options);
 }
 
@@ -200,6 +201,36 @@ Template.prototype.getDelims = function(name) {
 
 
 /**
+ * ## .load
+ *
+ * Load template objects onto the cache.
+ *
+ * @param  {String} `patterns` Glob patterns to use.
+ * @param  {Object} `options` Options to pass to [globby].
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.load = function (patterns, options) {
+  var obj = {};
+
+  glob.sync(patterns, options).forEach(function (filepath) {
+    var name = path.basename(filepath, path.extname(filepath));
+    var str = fs.readFileSync(filepath, 'utf8');
+    if (options && options.require) {
+      obj[name] = require(path.resolve(filepath));
+    } else {
+      obj[name] = this.parse(str);
+      obj[name].layout = obj[name].data.layout || null;
+    }
+  }.bind(this));
+
+  return obj;
+};
+
+
+/**
  * ## .addHelper
  *
  * Add a custom template helper.
@@ -233,6 +264,37 @@ Template.prototype.addHelper = function (key, value) {
 
 
 /**
+ * ## .addHelpers
+ *
+ * Add an array or glob of template helpers. When this
+ * method is used, each helper's name is derived from
+ * the basename the file.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.addHelpers('helpers/*.js');
+ * ```
+ *
+ * @param  {String} `key`
+ * @param  {Object} `value`
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.addHelpers = function (pattern, options) {
+  debug('registering helpers %s', pattern);
+  var opts = _.extend({require: true}, options);
+  var obj = this.load(pattern, opts);
+
+  _.extend(this.cache.helpers, obj);
+
+  return this;
+};
+
+
+/**
  * ## .defaultHelpers
  *
  * Add default helpers to the cache.
@@ -241,10 +303,11 @@ Template.prototype.addHelper = function (key, value) {
  */
 
 Template.prototype.defaultHelpers = function () {
-  this.addHelper('partial', function (name) {
+  this.addHelper('partial', function (name, locals) {
     debug('loading partial %s', name);
-
-    return this.cache.partials[name];
+    var partial = this.cache.partials[name];
+    var ctx = _.extend({}, partial.data, locals);
+    return this.process(partial.content, ctx);
   }.bind(this));
 };
 
@@ -313,7 +376,14 @@ Template.prototype.partial = function (key, str) {
  */
 
 Template.prototype.partials = function (obj) {
-  if (arguments.length === 0) {
+  var args = [].slice.call(arguments);
+
+  if (args.length === 1 && typeof args[0] === 'string') {
+    _.extend(this.cache.partials, this.load(args[0]));
+    return this;
+  }
+
+  if (args.length === 0) {
     return this.cache.partials;
   }
   _.forIn(obj, function (value, key) {
@@ -369,11 +439,19 @@ Template.prototype.layout = function (key, str, locals) {
  */
 
 Template.prototype.layouts = function (obj) {
+  var args = [].slice.call(arguments);
   this.lazyLayouts();
 
   if (arguments.length === 0) {
     return this.cache.layouts;
   }
+
+  if (args.length === 1 && typeof args[0] === 'string') {
+    _.extend(this.cache.layouts, this.load(args[0]));
+    this.layoutCache.set(this.cache.layouts);
+    return this;
+  }
+
   _.forIn(obj, function (value, key) {
     debug('adding layout %s', key);
     this.cache.layouts[key] = this.cache.layouts[key] || {};
@@ -442,8 +520,8 @@ Template.prototype.parse = function (str, options) {
  * @api public
  */
 
-Template.prototype.renderFile = function (filepath, locals, settings) {
-  return this.render(fs.readFileSync(filepath, 'utf8'), locals, settings);
+Template.prototype.processFile = function (filepath, locals, settings) {
+  return this.process(fs.readFileSync(filepath, 'utf8'), locals, settings);
 };
 
 
@@ -458,8 +536,28 @@ Template.prototype.renderFile = function (filepath, locals, settings) {
  * @api public
  */
 
-Template.prototype.render = function (str, locals, settings) {
-  return _.template(str, locals, settings);
+Template.prototype.process = function (str, locals, settings) {
+  return this.render(str, locals, settings);
+};
+
+
+/**
+ * Normalize the `this` object, to remove duplicate properties
+ * and ensure that data is where it should be.
+ *
+ * @param  {Object} `opts` Global options.
+ * @param  {Object} `locals`
+ * @param  {Object} `template` Template object.
+ * @return {Object}
+ */
+
+Template.prototype.normalizeData = function (opts, locals, template) {
+  _.extend(this.cache.data, this.options.data);
+  _.extend(this.cache.data, opts, opts.data);
+  _.extend(this.cache.data, locals);
+  _.extend(this.cache.data, template.data);
+  delete this.options.data;
+  this.flattenData(this.cache.data);
 };
 
 
@@ -475,41 +573,38 @@ Template.prototype.render = function (str, locals, settings) {
  * @api public
  */
 
-Template.prototype.process = function (str, locals, settings) {
+Template.prototype.render = function (str, locals, settings) {
   var opts = _.extend({}, this.options);
-  settings = settings || {};
+  settings = _.extend({}, settings);
 
-  var tmpl = this.parse(str);
   this.lazyLayouts(opts);
 
+  var tmpl = this.parse(str);
+  this.normalizeData(opts, locals, tmpl);
   var ctx = this.cache.data;
-  this.extendData(opts);
-  this.extendData(locals);
-  this.extendData(tmpl.data);
 
   var delims = this.getDelims(settings.delims || ctx.delims);
+  var currentLayout = ctx.layout || this.get('layout');
   var original = str;
   var layout;
 
-  if (ctx.layout || this.get('layout')) {
+  if (currentLayout) {
     debug('building layout: %s', ctx.layout);
-
-    var currentLayout = ctx.layout || this.get('layout');
-    layout = this.layoutCache.inject(str, currentLayout, {
+    layout = this.layoutCache.inject(tmpl.content, currentLayout, {
       locals: ctx,
-      delims: opts.layoutDelims,
-      tag: opts.layoutTag
+      delims: ctx.layoutDelims || opts.layoutDelims,
+      tag: ctx.layoutTag || opts.layoutTag
     });
 
     debug('layout %j', layout);
-
-    this.extendData(layout.locals);
-    str = layout.content || str;
+    _.extend(ctx, layout.locals);
   }
+
+  str = (layout && layout.content) || tmpl.content;
 
   settings = _.extend({imports: this.cache.helpers}, delims);
   while (this.assertDelims(str, delims)) {
-    str = this.render(str, ctx, settings);
+    str = _.template(str, ctx, settings);
     if (str === original) {
       break;
     }
