@@ -488,6 +488,8 @@ Template.prototype.process = function (str, locals, settings) {
   this.extendData(tmpl.data);
 
   var delims = this.getDelims(settings.delims || ctx.delims);
+  settings = _.extend({imports: this.cache.helpers}, delims);
+
   var original = str;
   var layout;
 
@@ -496,8 +498,10 @@ Template.prototype.process = function (str, locals, settings) {
 
     var currentLayout = ctx.layout || this.get('layout');
     layout = this.layoutCache.inject(str, currentLayout, {
+      fn: this.render,
       locals: ctx,
       delims: opts.layoutDelims,
+      settings: settings,
       tag: opts.layoutTag
     });
 
@@ -507,7 +511,6 @@ Template.prototype.process = function (str, locals, settings) {
     str = layout.content || str;
   }
 
-  settings = _.extend({imports: this.cache.helpers}, delims);
   while (this.assertDelims(str, delims)) {
     str = this.render(str, ctx, settings);
     if (str === original) {
