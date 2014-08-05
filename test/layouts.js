@@ -26,11 +26,14 @@ describe('template layouts', function () {
 
     it('should add layouts defined as objects to `cache.layouts`.', function () {
       var template = new Template();
-      template.layout({a: {content: 'This is layout <%= a %>'}});
-      template.layout({b: {content: 'This is layout <%= b %>'}});
+      template.layout({a: {content: 'This is layout <%= a %>', locals: {a: 'b'}}});
+      template.layout({b: {content: 'This is layout <%= b %>', locals: {a: 'd'}}});
 
-      var cache = Object.keys(template.cache.layouts);
-      cache.should.have.length(2);
+      var layouts = template.cache.layouts;
+      layouts.should.have.property('locals');
+      layouts.should.have.property('a');
+      layouts.should.have.property('b');
+      Object.keys(layouts).should.have.length(3);
     });
   });
 
@@ -50,7 +53,7 @@ describe('template layouts', function () {
     it('should process layouts defined as objects when the `<%= partial() %>` tag is used.', function () {
       var template = new Template();
       template.layout({last: {content: '\nlast\n{{body}}\nlast'}});
-      // template.partials({a: {layout: 'last', content: 'This is partial <%= a %>'}});
+      template.partials({a: {layout: 'last', content: 'This is partial <%= a %>'}});
       template.partials({
         a: 'This is partial <%= a %>',
         b: 'This is partial <%= b %>'
