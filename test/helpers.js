@@ -54,4 +54,38 @@ describe('template helpers', function () {
       template.process('<%= log("logging tag works!") %>', ctx);
     });
   });
+
+  describe('.addHelpers():', function () {
+    var template = new Template();
+
+    template.addHelpers('helpers/*.js');
+
+    it('should add helpers to `cache.helpers`.', function () {
+      var cache = Object.keys(template.cache.helpers);
+
+      // includes the default `partial` helper
+      cache.should.have.length(5);
+    });
+
+    var ctx = {
+      a: 'A',
+      b: 'B',
+      c: 'C',
+      d: 'D'
+    };
+
+    it('should add helpers to `cache.helpers`.', function () {
+      template.process('<%= include("test/fixtures/a.md") %>', ctx);
+      template.process('<%= include("test/fixtures/b.md") %>', ctx);
+    });
+
+    it('should add helpers to `cache.helpers`.', function () {
+      template.process('<%= glob("test/fixtures/*.md") %>', ctx);
+      template.process('<%= glob(["test/fixtures/*.md"]) %>', ctx);
+    });
+
+    it('should add helpers to `cache.helpers`.', function () {
+      template.process('<%= log("logging tag works!") %>', ctx);
+    });
+  });
 });

@@ -14,7 +14,6 @@ var _ = require('lodash');
 
 describe('template layouts', function () {
   describe('.layout():', function () {
-
     it('should add layouts defined as  strings to `cache.layouts`.', function () {
       var template = new Template();
       template.layout('a', 'This is layout <%= a %>');

@@ -79,6 +79,7 @@ Template.prototype.defaultConfig = function() {
 
   this.set('parsers', this.cache.parsers || {});
   this.set('helpers', this.cache.helpers || {});
+  this.enable('bindHelpers');
 
   this.addDelims('default', ['<%', '%>']);
   this.addDelims('es6', ['${', '}'], {
@@ -95,8 +96,8 @@ Template.prototype.defaultConfig = function() {
  * Lazily add a `Layout` instance if it has not yet been added.
  * Also normalizes settings to pass to the `layouts` library.
  *
- * We cannot instantiate `Layout` in the defaultConfig because
- * it reads settings which might be set until after init.
+ * We can't instantiate `Layout` in the defaultConfig because
+ * it reads settings which might not be set until after init.
  *
  * @api private
  */
@@ -215,35 +216,6 @@ Template.prototype.getDelims = function(name) {
 
 
 /**
- * ## .load
- *
- * Read a glob of files, parse them and return objects.
- *
- * @param  {String} `patterns` Glob patterns to use.
- * @param  {Object} `options` Options to pass to [globby].
- * @api public
- */
-
-Template.prototype.load = function (patterns, options) {
-  var obj = {};
-
-  glob.sync(patterns, options).forEach(function (filepath) {
-    debug('loading %s', chalk.magenta(filepath));
-
-    var name = path.basename(filepath, path.extname(filepath));
-    var str = fs.readFileSync(filepath, 'utf8');
-    if (options && options.require) {
-      obj[name] = require(path.resolve(filepath));
-    } else {
-      obj[name] = this.parse(str);
-    }
-  }.bind(this));
-
-  return obj;
-};
-
-
-/**
  * ## .addHelper
  *
  * Add a custom template helper.
@@ -271,7 +243,11 @@ Template.prototype.load = function (patterns, options) {
 Template.prototype.addHelper = function (key, value) {
   debug('register helper %s', chalk.magenta(key));
 
-  this.cache.helpers[key] = value;
+  if (this.enabled('bindHelpers')) {
+    this.cache.helpers[key] = _.bind(value, this);
+  } else {
+    this.cache.helpers[key] = value;
+  }
   return this;
 };
 
@@ -297,9 +273,9 @@ Template.prototype.addHelper = function (key, value) {
  */
 
 Template.prototype.addHelpers = function (pattern, options) {
-  debug('registering helpers %s:', chalk.magenta(patterns));
+  debug('registering helpers %s:', chalk.magenta(pattern));
 
-  var opts = _.extend({require: true}, options);
+  var opts = _.extend({requireable: true}, options);
   this.extend('helpers', this.load(pattern, opts));
   return this;
 };
@@ -327,6 +303,38 @@ Template.prototype._defaultHelpers = function () {
 
 
 /**
+ * ## .load
+ *
+ * Read a glob of files, parse them and return objects.
+ *
+ * @param  {String} `patterns` Glob patterns to use.
+ * @param  {Object} `options` Options to pass to [globby].
+ * @api public
+ */
+
+Template.prototype.load = function (patterns, options) {
+  var obj = {};
+
+  glob.sync(patterns, options).forEach(function (filepath) {
+    debug('loading %s', chalk.magenta(filepath));
+
+    var name = path.basename(filepath, path.extname(filepath));
+    var str = fs.readFileSync(filepath, 'utf8');
+    if (options && options.requireable) {
+      if (this.enabled('bindHelpers')) {
+        obj[name] = _.bind(require(path.resolve(filepath)), this);
+      } else {
+        obj[name] = require(path.resolve(filepath));
+      }
+    } else {
+      obj[name] = this.parse(str);
+    }
+  }.bind(this));
+  return obj;
+};
+
+
+/**
  * ## .loadTemplate
  *
  * Add an object of loadTemplate to `cache[name]`.
@@ -347,10 +355,14 @@ Template.prototype.loadTemplate = function (name, isLayout) {
     var args = [].slice.call(arguments).filter(Boolean);
     var arity = args.length;
 
+    locals = locals || {};
+
     if (arity === 1) {
+      // If only one arg is passed and it's an object,
+      // merge it onto the cache
       if (typeof key === 'object') {
         debug('[adding] %ss: %j', gray(name), Object.keys(key));
-        key.locals = locals || {};
+        key.locals = locals;
         if (isLayout) {
           self.setLayout(key);
         } else {
@@ -359,6 +371,8 @@ Template.prototype.loadTemplate = function (name, isLayout) {
         self.extend(name, key);
         return self;
       }
+      // If only one arg is passed, and it's a string,
+      // return the named template from the cache
       return self.cache[name][key];
     }
 
@@ -370,9 +384,9 @@ Template.prototype.loadTemplate = function (name, isLayout) {
       self.cache[name][key] = str;
     }
 
-    self.cache[name][key].data = locals || {};
-    self.cache[name][key].layout = (locals && locals.layout);
-    delete self.cache[name][key].data.layout;
+    self.cache[name][key].locals = locals;
+    self.cache[name][key].layout = locals.layout;
+    delete self.cache[name][key].locals.layout;
 
     if (isLayout) {
       self.setLayout(self.cache.layouts);
