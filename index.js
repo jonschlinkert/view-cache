@@ -216,89 +216,20 @@ Template.prototype.getDelims = function(name) {
 
 
 /**
- * ## .addHelper
+ * ## .assertDelims
  *
- * Add a custom template helper.
+ * Return `true` if template delimiters exist in `str`.
  *
- * **Example:**
- *
- * ```js
- * template.addHelper('include', function(filepath) {
- *   return fs.readFileSync(filepath, 'utf8');
- * });
- * ```
- * **Usage:**
- *
- * ```js
- * template.process('<%= include("foo.md") %>');
- * ```
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.addHelper = function (key, value) {
-  debug('register helper %s', chalk.magenta(key));
-
-  if (this.enabled('bindHelpers')) {
-    this.cache.helpers[key] = _.bind(value, this);
-  } else {
-    this.cache.helpers[key] = value;
-  }
-  return this;
-};
-
-
-/**
- * ## .addHelpers
- *
- * Add an array or glob of template helpers. When this
- * method is used, each helper's name is derived from
- * the basename the file.
- *
- * **Example:**
- *
- * ```js
- * template.addHelpers('helpers/*.js');
- * ```
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.addHelpers = function (pattern, options) {
-  debug('registering helpers %s:', chalk.magenta(pattern));
-
-  var opts = _.extend({requireable: true}, options);
-  this.extend('helpers', this.load(pattern, opts));
-  return this;
-};
-
-
-/**
- * ## ._defaultHelpers
- *
- * Load default helpers onto the cache.
- *
+ * @param  {String} `str`
+ * @return {Boolean}
  * @api private
  */
 
-Template.prototype._defaultHelpers = function () {
-  this.addHelper('partial', function (name, locals) {
-    debug('%s [loading] partial %s:', green('helper'), bold(name));
-
-    var partial = this.cache.partials[name];
-    if (partial) {
-      var ctx = _.extend({}, partial.data, locals);
-      return this.process(partial.content, ctx);
-    }
-  }.bind(this));
+Template.prototype.assertDelims = function (str, re) {
+  return re ? str.indexOf(re.delims[0]) !== -1 &&
+    str.indexOf(re.delims[1]) !== -1 :
+    str.indexOf('<%') !== -1 ||
+    str.indexOf('${') !== -1;
 };
 
 
@@ -364,7 +295,7 @@ Template.prototype.loadTemplate = function (name, isLayout) {
         debug('[adding] %ss: %j', gray(name), Object.keys(key));
         key.locals = locals;
         if (isLayout) {
-          self.setLayout(key);
+          self.addLayout(key);
         } else {
           locals.layout = locals.layout || global.layout;
         }
@@ -389,7 +320,7 @@ Template.prototype.loadTemplate = function (name, isLayout) {
     delete self.cache[name][key].locals.layout;
 
     if (isLayout) {
-      self.setLayout(self.cache.layouts);
+      self.addLayout(self.cache.layouts);
     }
   };
 
@@ -432,7 +363,7 @@ Template.prototype.loadTemplates = function (name, isLayout, patterns, options) 
           }
           this.cache[name][key] = value;
           if (isLayout) {
-            this.setLayout(this.cache[name][key]);
+            this.addLayout(this.cache[name][key]);
           }
         }.bind(this));
         return this;
@@ -521,14 +452,14 @@ Template.prototype.pages = function (patterns, options) {
 
 
 /**
- * ## .setLayout
+ * ## .addLayout
  *
  * Proxy for `layoutCache.setLayout`.
  *
  * @api private
  */
 
-Template.prototype.setLayout = function(obj) {
+Template.prototype.addLayout = function(obj) {
   this.layoutCache.setLayout(obj);
 };
 
@@ -569,22 +500,90 @@ Template.prototype.layouts = function (patterns, options) {
   return this;
 };
 
+/**
+ * ## .addHelper
+ *
+ * Add a custom template helper.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.addHelper('include', function(filepath) {
+ *   return fs.readFileSync(filepath, 'utf8');
+ * });
+ * ```
+ * **Usage:**
+ *
+ * ```js
+ * template.process('<%= include("foo.md") %>');
+ * ```
+ *
+ * @param  {String} `key`
+ * @param  {Object} `value`
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.addHelper = function (key, value) {
+  debug('register helper %s', chalk.magenta(key));
+
+  if (this.enabled('bindHelpers')) {
+    this.cache.helpers[key] = _.bind(value, this);
+  } else {
+    this.cache.helpers[key] = value;
+  }
+  return this;
+};
+
 
 /**
- * ## .assertDelims
+ * ## .addHelpers
  *
- * Return `true` if template delimiters exist in `str`.
+ * Add an array or glob of template helpers. When this
+ * method is used, each helper's name is derived from
+ * the basename the file.
  *
- * @param  {String} `str`
- * @return {Boolean}
+ * **Example:**
+ *
+ * ```js
+ * template.addHelpers('helpers/*.js');
+ * ```
+ *
+ * @param  {String} `key`
+ * @param  {Object} `value`
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.addHelpers = function (pattern, options) {
+  debug('registering helpers %s:', chalk.magenta(pattern));
+
+  var opts = _.extend({requireable: true}, options);
+  this.extend('helpers', this.load(pattern, opts));
+  return this;
+};
+
+
+/**
+ * ## ._defaultHelpers
+ *
+ * Load default helpers onto the cache.
+ *
  * @api private
  */
 
-Template.prototype.assertDelims = function (str, re) {
-  return re ? str.indexOf(re.delims[0]) !== -1 &&
-    str.indexOf(re.delims[1]) !== -1 :
-    str.indexOf('<%') !== -1 ||
-    str.indexOf('${') !== -1;
+Template.prototype._defaultHelpers = function () {
+  this.addHelper('partial', function (name, locals) {
+    debug('%s [loading] partial %s:', green('helper'), bold(name));
+
+    var partial = this.cache.partials[name];
+    if (partial) {
+      var ctx = _.extend({}, partial.data, locals);
+      return this.process(partial.content, ctx);
+    }
+  }.bind(this));
 };
 
 
@@ -612,9 +611,149 @@ Template.prototype.parse = function (str, options) {
 
 
 /**
+ * ## .parser
+ *
+ * Register a parser `fn` to be used on each `.src` file. This is used to parse
+ * front matter, but can be used for any kind of parsing.
+ *
+ * @param {String} `name` Optional name of the parser, for debugging.
+ * @param {Object} `options` Options to pass to parser.
+ * @param {Function} `fn` The parsing function.
+ * @return {Template} for chaining
+ * @api public
+ */
+
+Template.prototype.addParser = function (ext, stage, fn) {
+  if (ext[0] === '.') {
+    ext = ext.replace(/^\./, '');
+  }
+  if (typeof stage === 'function') {
+    fn = stage;
+    stage = 'before';
+  }
+
+  var parsers = this.cache.parsers[ext] || [];
+  fn = arrayify(fn).map(function(parser) {
+    if (typeof parser !== 'function') {
+      throw new TypeError('Template.parser() exception:', ext);
+    }
+    return parser;
+  }.bind(this));
+
+  this.cache.parsers[ext] = _.union([], parsers, fn);
+  return this;
+};
+
+
+/**
+ * ## .parse
+ *
+ * Traverse the `parser` stack, passing the `file` object to each
+ * parser and returning the accumlated result.
+ *
+ * @param  {Object} `options`
+ * @api private
+ */
+
+Template.prototype._parse = function (filepath, options) {
+  var opts = _.extend({}, options);
+  var ext = opts.ext || path.extname(filepath);
+
+  if (ext[0] === '.') {
+    ext = ext.replace(/^\./, '');
+  }
+  var parsers = this.cache.parsers[ext];
+  if (ext === '.*') {
+    parsers = [this.defaultParser];
+  }
+
+  // if (parsers && parsers.length) {
+  //   parsers.forEach(function (parser) {
+  //     try {
+  //       file = parser(str, options);
+  //     } catch (err) {
+  //       throw new Error('Template._parse() parsing error:', err));
+  //     }
+  //   });
+  // }
+};
+
+
+/**
+ * ## .parse
+ *
+ * Parse a string and extract yaml front matter.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.parse('---\ntitle: Home\n---\n<%= title %>');
+ * //=> {data: {title: "Home"}, content: "<%= title %>"}}
+ * ```
+ *
+ * @param  {String} `str` The string to parse.
+ * @param  {String} `Options` options to pass to [gray-matter].
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.parse = function (str, options) {
+  if (str) {
+    return matter(str, _.extend({autodetect: true}, options));
+  }
+  return str;
+};
+
+
+/**
+ * ## .compile
+ *
+ * Compile a template string.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.compile('<%= foo %>');
+ * ```
+ *
+ * @param  {String} `str` The actual template string.
+ * @param  {String} `settings` Delimiters to pass to Lo-dash.
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.compile = function (str, settings) {
+  return _.template(str, null, settings);
+};
+
+
+/**
+ * ## .compileFile
+ *
+ * Compile a template from a filepath.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.compileFile('templates/index.tmpl');
+ * ```
+ *
+ * @param  {String} `filepath`
+ * @param  {Object} `options`
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.compileFile = function (filepath, settings) {
+  return this.compile(fs.readFileSync(filepath, 'utf8'), settings);
+};
+
+
+/**
  * ## .renderFile
  *
- * Render a template `str` with the given `locals` and `options`.
+ * Render a template from a filepath with the
+ * given `locals` and `settings`.
  *
  * @param  {Object} `locals` Data to pass to registered view engines.
  * @param  {Object} `options` Options to pass to registered view engines.
@@ -622,15 +761,16 @@ Template.prototype.parse = function (str, options) {
  * @api public
  */
 
-Template.prototype.processFile = function (filepath, locals, settings) {
-  return this.process(fs.readFileSync(filepath, 'utf8'), locals, settings);
+Template.prototype.renderFile = function (filepath, locals, settings) {
+  return this.compileFile(filepath, settings)(locals);
 };
 
 
 /**
  * ## .render
  *
- * Render a template `str` with the given `locals` and `options`.
+ * Render a template `str` with the given
+ * `locals` and `settings`.
  *
  * @param  {Object} `locals` Data to pass to registered view engines.
  * @param  {Object} `options` Options to pass to registered view engines.
@@ -638,15 +778,16 @@ Template.prototype.processFile = function (filepath, locals, settings) {
  * @api public
  */
 
-Template.prototype.process = function (str, locals, settings) {
-  return this.render(str, locals, settings);
+Template.prototype.render = function (str, locals, settings) {
+  return this.compile(str, settings)(locals);
 };
 
 
 /**
- * ## .render
+ * ## .process
  *
- * Process a template `str` with the given `locals` and `settings`.
+ * Process a template `str` with the given
+ * `locals` and `settings`.
  *
  * @param  {String} `str` The template string.
  * @param  {Object} `locals` Optionally pass locals to use as context.
@@ -655,7 +796,7 @@ Template.prototype.process = function (str, locals, settings) {
  * @api public
  */
 
-Template.prototype.render = function (str, locals, settings) {
+Template.prototype.process = function (str, locals, settings) {
   debug('[rendering] template: %s', bold(str.substring(0, 150)));
   this.lazyLayouts();
 
@@ -690,8 +831,16 @@ Template.prototype.render = function (str, locals, settings) {
   str = (layout && layout.content) || tmpl.content;
 
   settings = _.extend({imports: this.cache.helpers}, delims);
+
+  // If no data is passed, return a compiled fn
+  if (!Object.keys(data).length) {
+    return this.compile(str, settings);
+  }
+
+  // Otherwise, recursively render templates and
+  // return a template string.
   while (this.assertDelims(str, delims)) {
-    str = _.template(str, data, settings);
+    str = this.compile(str, settings)(data);
     if (str === original) {
       break;
     }
