@@ -290,6 +290,8 @@ Template.prototype.normalize = function (key, str, locals) {
   var obj = {};
   obj[key] = this.parse(str);
   obj[key].data = _.extend({}, locals, obj[key].data);
+  obj[key].layout = obj[key].data.layout;
+  delete obj[key].data.layout;
   return obj;
 };
 
@@ -529,10 +531,11 @@ Template.prototype._defaultHelpers = function () {
   this.addHelper('partial', function (name, locals) {
     debug('%s [loading] partial %s:', green('helper'), bold(name));
 
-    var partial = this.cache.partials[name];
-    if (partial) {
-      var ctx = _.extend({}, partial.data, locals);
-      return this.process(partial.content, ctx);
+    var tmpl = this.cache.partials[name];
+
+    if (tmpl) {
+      var ctx = _.extend({layout: tmpl.layout}, tmpl.data, locals);
+      return this.process(tmpl.content, ctx);
     }
   }.bind(this));
 };
@@ -772,6 +775,7 @@ Template.prototype.process = function (str, locals, settings) {
       break;
     }
   }
+  delete this.cache.locals.layout;
   return str;
 };
 
