@@ -84,10 +84,10 @@ describe('template locals:', function () {
     it('should pass the context to templates:', function () {
       var template = new Template({
         locals: {
-          a: 'FIRST',
-          b: 'SECOND',
-          c: 'THIRD',
-          d: 'FOURTH',
+          a: 'AA',
+          b: 'BB',
+          c: 'CC',
+          d: 'DD',
           layout: 'a'
         }
       });
@@ -102,16 +102,15 @@ describe('template locals:', function () {
       template.partial('c', 'This is partial <%= c %>');
       template.partial('d', 'This is partial <%= d %>');
 
-      var a = template.process('<%= partial("a") %>', {title: 'FIRST'});
-      var b = template.process('<%= partial("b") %>', {title: 'SECOND'});
-      var c = template.process('<%= partial("c") %>', {title: 'THIRD'});
-      var d = template.process('<%= partial("d") %>', {title: 'FOURTH'});
+      var a = template.process('<%= partial("a") %>', {title: 'AA'});
+      var b = template.process('<%= partial("b") %>', {title: 'BB'});
+      var c = template.process('<%= partial("c") %>', {title: 'CC'});
+      var d = template.process('<%= partial("d") %>', {title: 'DD'});
 
-
-      a.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FIRST\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
-      b.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial SECOND\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
-      c.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial THIRD\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
-      d.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FOURTH\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+      a.should.equal('\nlast\n\nBEFORE CC \nBEFORE BB \nBEFORE AA This is partial AA\nAFTER AA\nAFTER BB\nAFTER CC\nlast');
+      b.should.equal('\nlast\n\nBEFORE CC \nBEFORE BB \nBEFORE AA This is partial BB\nAFTER AA\nAFTER BB\nAFTER CC\nlast');
+      c.should.equal('\nlast\n\nBEFORE CC \nBEFORE BB \nBEFORE AA This is partial CC\nAFTER AA\nAFTER BB\nAFTER CC\nlast');
+      d.should.equal('\nlast\n\nBEFORE CC \nBEFORE BB \nBEFORE AA This is partial DD\nAFTER AA\nAFTER BB\nAFTER CC\nlast');
     });
   });
 

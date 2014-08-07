@@ -12,6 +12,31 @@ var Template = require('..');
 var _ = require('lodash');
 
 
+/**
+ * TODO:
+ *
+ * + should use layouts defined:
+ *
+ *   - globally
+ *   - template.layout() method locals
+ *   - template.layout() method front matter
+ *   - template locals (<%= partial("a", {layout: 'a'}) %>)
+ *   - template.partial() method locals
+ *   - template.partial() method front matter
+ *   - template.page() method locals
+ *   - template.page() method front matter
+ *   - template.process() method locals
+ *   - template.render() method locals
+ *   - template.renderFile() method locals
+ *   - in front matter
+ *   - in a parent template
+ *
+ * + should prefer layouts defined in:
+ *   - method locals over global
+ *   - template locals over method locals
+ *   - front matter over template locals
+ */
+
 describe('template layouts', function () {
   describe('.layout():', function () {
     it('should add layouts defined as  strings to `cache.layouts`.', function () {
@@ -128,5 +153,79 @@ describe('template layouts', function () {
       d.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FOURTH\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
     });
 
+    xit('should prefer layouts defined on the locals over a default layout.', function () {
+      var template = new Template({locals: {layout: 'GLOBAL'}});
+
+      template.layout('GLOBAL', '\nGLOBAL\n{{body}}\nGLOBAL');
+      template.layout('last', '\nlast\n{{body}}\nlast');
+      template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
+      template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
+      template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'last'});
+
+      template.partial('a', 'This is partial <%= a %>', {layout: 'a'});
+      template.partial('b', 'This is partial <%= b %>', {layout: 'b'});
+      template.partial('c', 'This is partial <%= c %>', {layout: 'c'});
+      template.partial('d', 'This is partial <%= d %>', {layout: 'd'});
+
+      var a = template.process('<%= partial("a") %>', {title: 'Local AA'});
+      var b = template.process('<%= partial("b") %>', {title: 'Local BB'});
+      var c = template.process('<%= partial("c") %>', {title: 'Local CC'});
+      var d = template.process('<%= partial("d") %>', {title: 'Local DD'});
+
+      a.should.equal('This is partial AA');
+      b.should.equal('This is partial BB');
+      c.should.equal('This is partial CC');
+      d.should.equal('This is partial DD');
+    });
+
+    xit('should prefer layouts defined on the locals of a template over global.', function () {
+      var template = new Template({locals: {layout: 'GLOBAL'}});
+
+      template.layout('GLOBAL', '\nGLOBAL\n{{body}}\nGLOBAL');
+      template.layout('last', '\nlast\n{{body}}\nlast');
+      template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
+      template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
+      template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'last'});
+
+      template.partial('a', 'This is partial <%= a %>', {layout: 'a'});
+      template.partial('b', 'This is partial <%= b %>', {layout: 'b'});
+      template.partial('c', 'This is partial <%= c %>', {layout: 'c'});
+      template.partial('d', 'This is partial <%= d %>', {layout: 'd'});
+
+      var a = template.process('<%= partial("a", {layout: "a"}) %>', {title: 'Local AA'});
+      var b = template.process('<%= partial("b", {layout: "a"}) %>', {title: 'Local BB'});
+      var c = template.process('<%= partial("c", {layout: "a"}) %>', {title: 'Local CC'});
+      var d = template.process('<%= partial("d", {layout: "a"}) %>', {title: 'Local DD'});
+
+      a.should.equal('This is partial AA');
+      b.should.equal('This is partial BB');
+      c.should.equal('This is partial CC');
+      d.should.equal('This is partial DD');
+    });
+
+    xit('should use layouts defined on the locals of a template.', function () {
+      var template = new Template({locals: {title: 'GLOBAL'}});
+
+      template.layout('GLOBAL', '\nGLOBAL\n{{body}}\nGLOBAL');
+      template.layout('last', '\nlast\n{{body}}\nlast');
+      template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
+      template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
+      template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'last'});
+
+      template.partial('a', 'This is partial <%= a %>', {layout: 'a'});
+      template.partial('b', 'This is partial <%= b %>', {layout: 'b'});
+      template.partial('c', 'This is partial <%= c %>', {layout: 'c'});
+      template.partial('d', 'This is partial <%= d %>', {layout: 'd'});
+
+      var a = template.process('<%= partial("a", {layout: "a"}) %>', {title: 'Local AA'});
+      var b = template.process('<%= partial("b", {layout: "a"}) %>', {title: 'Local BB'});
+      var c = template.process('<%= partial("c", {layout: "a"}) %>', {title: 'Local CC'});
+      var d = template.process('<%= partial("d", {layout: "a"}) %>', {title: 'Local DD'});
+
+      a.should.equal('This is partial AA');
+      b.should.equal('This is partial BB');
+      c.should.equal('This is partial CC');
+      d.should.equal('This is partial DD');
+    });
   });
 });

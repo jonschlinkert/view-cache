@@ -216,6 +216,289 @@ Template.prototype.getDelims = function(name) {
 
 
 /**
+ * ## .assertDelims
+ *
+ * Return `true` if template delimiters exist in `str`.
+ *
+ * @param  {String} `str`
+ * @return {Boolean}
+ * @api private
+ */
+
+Template.prototype.assertDelims = function (str, re) {
+  return re ? str.indexOf(re.delims[0]) !== -1 &&
+    str.indexOf(re.delims[1]) !== -1 :
+    str.indexOf('<%') !== -1 ||
+    str.indexOf('${') !== -1;
+};
+
+
+/**
+ * ## .load
+ *
+ * Read a glob of files, parse them and return objects.
+ *
+ * @param  {String} `patterns` Glob patterns to use.
+ * @param  {Object} `options` Options to pass to [globby].
+ * @api public
+ */
+
+Template.prototype.load = function (patterns, options) {
+  var obj = {};
+
+  glob.sync(patterns, options).forEach(function (filepath) {
+    debug('loading %s', chalk.magenta(filepath));
+
+    var name = path.basename(filepath, path.extname(filepath));
+    var str = fs.readFileSync(filepath, 'utf8');
+    if (options && options.requireable) {
+      if (this.enabled('bindHelpers')) {
+        obj[name] = _.bind(require(path.resolve(filepath)), this);
+      } else {
+        obj[name] = require(path.resolve(filepath));
+      }
+    } else {
+      obj[name] = this.parse(str);
+    }
+  }.bind(this));
+  return obj;
+};
+
+
+/**
+ * ## .loadTemplate
+ *
+ * Add an object of loadTemplate to `cache[name]`.
+ *
+ * @param {Arguments}
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.loadTemplate = function (name, isLayout) {
+  this.lazyLayouts();
+  var self = this;
+
+  this.cache[name] = this.cache[name] || {};
+
+  return function (key, str, locals) {
+    var args = [].slice.call(arguments).filter(Boolean);
+    var arity = args.length;
+
+    locals = locals || {};
+
+    if (arity === 1) {
+      // If it's an object, merge it onto the cache
+      if (typeof key === 'object') {
+        debug('[adding] %ss: %j', gray(name), Object.keys(key));
+        key.locals = _.extend({}, locals, key.locals);
+        if (isLayout) {
+          self.addLayout(key);
+        }
+        self.extend(name, key);
+        return self;
+      }
+      // If it's a string, return template from the cache
+      return self.cache[name][key];
+    }
+
+    debug('[adding] %s: %s', gray(name), key);
+
+    var obj = {};
+    if (typeof key === 'string' && typeof str === 'string') {
+      obj = self.parse(str);
+      obj.locals = obj.data;
+      delete obj.data;
+    } else {
+      obj = str;
+    }
+
+    obj.locals = _.extend({}, locals, obj.locals);
+    self.cache[name][key] = obj;
+
+    if (isLayout) {
+      self.addLayout(self.cache.layouts);
+    }
+  };
+
+  return this;
+};
+
+
+/**
+ * ## .partials
+ *
+ * Add an object of partials to `cache.partials`.
+ *
+ * @param {Arguments}
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.loadTemplates = function (name, isLayout, patterns, options) {
+  var opts = _.extend({}, options);
+  this.lazyLayouts();
+
+  this.cache[name] = this.cache[name] || {};
+
+  if (arguments.length > 0) {
+    try {
+      var isGlob = (typeof patterns === 'string' || Array.isArray(patterns));
+      if (isGlob) {
+        debug('[loading] %s: %s', gray(name), patterns);
+        patterns = this.load(patterns, opts);
+      }
+
+      var isObject = (typeof patterns === 'object' && !Array.isArray(patterns));
+      if (isObject) {
+        debug('[registering] %s object: %j', gray(name), patterns);
+
+        _.forIn(patterns, function (value, key) {
+          if (value && typeof value === 'string') {
+            value = this.parse(value);
+          }
+          this.cache[name][key] = value;
+          if (isLayout) {
+            this.addLayout(this.cache[name][key]);
+          }
+        }.bind(this));
+        return this;
+      }
+    } catch (err) {
+      throw new Error('loadTemplates', err);
+    }
+  }
+
+  return this.cache[name];
+};
+
+
+/**
+ * ## .partial
+ *
+ * Add a partial to `cache.partials`.
+ *
+ * @param  {String} `key`
+ * @param  {Object} `value`
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.partial = function (key, str, locals) {
+  if (arguments.length === 1 && typeof key === 'string') {
+    return this.cache.partials[key];
+  }
+  this.loadTemplate('partials', false)(key, str, locals);
+};
+
+
+/**
+ * ## .partials
+ *
+ * Add an object of partials to `cache.partials`.
+ *
+ * @param {Arguments}
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.partials = function (patterns, locals) {
+  this.loadTemplates('partials', false, patterns, locals);
+  return this;
+};
+
+
+/**
+ * ## .page
+ *
+ * Add a page to `cache.pages`.
+ *
+ * @param  {String} `key`
+ * @param  {Object} `value`
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.page = function (key, str, locals) {
+  if (arguments.length === 1 && typeof key === 'string') {
+    return this.cache.pages[key];
+  }
+  this.loadTemplate('pages', false)(key, str, locals);
+};
+
+
+/**
+ * ## .pages
+ *
+ * Add an object of pages to `cache.pages`.
+ *
+ * @param {Arguments}
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.pages = function (patterns, options) {
+  this.loadTemplates('pages', false, patterns, options);
+  return this;
+};
+
+
+/**
+ * ## .addLayout
+ *
+ * Proxy for `layoutCache.setLayout`.
+ *
+ * @api private
+ */
+
+Template.prototype.addLayout = function(obj) {
+  this.layoutCache.setLayout(obj);
+};
+
+
+/**
+ * ## .layout
+ *
+ * Add a layout to `cache.layouts`.
+ *
+ * @param  {String} `key`
+ * @param  {Object} `value`
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.layout = function (key, str, locals) {
+  if (arguments.length === 1 && typeof key === 'string') {
+    return this.cache.layouts[key];
+  }
+  this.loadTemplate('layouts', true)(key, str, locals);
+};
+
+
+/**
+ * ## .layouts
+ *
+ * Add an object of layouts to `cache.layouts`.
+ *
+ * @param {Arguments}
+ * @return {Template} to enable chaining.
+ * @chainable
+ * @api public
+ */
+
+Template.prototype.layouts = function (patterns, options) {
+  this.loadTemplates('layouts', true, patterns, options);
+  return this;
+};
+
+/**
  * ## .addHelper
  *
  * Add a custom template helper.
@@ -303,292 +586,6 @@ Template.prototype._defaultHelpers = function () {
 
 
 /**
- * ## .load
- *
- * Read a glob of files, parse them and return objects.
- *
- * @param  {String} `patterns` Glob patterns to use.
- * @param  {Object} `options` Options to pass to [globby].
- * @api public
- */
-
-Template.prototype.load = function (patterns, options) {
-  var obj = {};
-
-  glob.sync(patterns, options).forEach(function (filepath) {
-    debug('loading %s', chalk.magenta(filepath));
-
-    var name = path.basename(filepath, path.extname(filepath));
-    var str = fs.readFileSync(filepath, 'utf8');
-    if (options && options.requireable) {
-      if (this.enabled('bindHelpers')) {
-        obj[name] = _.bind(require(path.resolve(filepath)), this);
-      } else {
-        obj[name] = require(path.resolve(filepath));
-      }
-    } else {
-      obj[name] = this.parse(str);
-    }
-  }.bind(this));
-  return obj;
-};
-
-
-/**
- * ## .loadTemplate
- *
- * Add an object of loadTemplate to `cache[name]`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.loadTemplate = function (name, isLayout) {
-  this.lazyLayouts();
-  var self = this;
-
-  this.cache[name] = this.cache[name] || {};
-
-  return function (key, str, locals) {
-    var args = [].slice.call(arguments).filter(Boolean);
-    var arity = args.length;
-
-    locals = locals || {};
-
-    if (arity === 1) {
-      // If only one arg is passed and it's an object,
-      // merge it onto the cache
-      if (typeof key === 'object') {
-        debug('[adding] %ss: %j', gray(name), Object.keys(key));
-        key.locals = locals;
-        if (isLayout) {
-          self.setLayout(key);
-        } else {
-          locals.layout = locals.layout || global.layout;
-        }
-        self.extend(name, key);
-        return self;
-      }
-      // If only one arg is passed, and it's a string,
-      // return the named template from the cache
-      return self.cache[name][key];
-    }
-
-    debug('[adding] %s: %s', gray(name), key);
-
-    if (typeof key === 'string' && typeof str === 'string') {
-      self.cache[name][key] = self.parse(str);
-    } else {
-      self.cache[name][key] = str;
-    }
-
-    self.cache[name][key].locals = locals;
-    self.cache[name][key].layout = locals.layout;
-    delete self.cache[name][key].locals.layout;
-
-    if (isLayout) {
-      self.setLayout(self.cache.layouts);
-    }
-  };
-
-  return this;
-};
-
-
-/**
- * ## .partials
- *
- * Add an object of partials to `cache.partials`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.loadTemplates = function (name, isLayout, patterns, options) {
-  var opts = _.extend({}, options);
-  this.lazyLayouts();
-
-  this.cache[name] = this.cache[name] || {};
-
-  if (arguments.length > 0) {
-    try {
-      var isGlob = (typeof patterns === 'string' || Array.isArray(patterns));
-      if (isGlob) {
-        debug('[loading] %s: %s', gray(name), patterns);
-        patterns = this.load(patterns, opts);
-      }
-
-      var isObject = (typeof patterns === 'object' && !Array.isArray(patterns));
-      if (isObject) {
-        debug('[registering] %s object: %j', gray(name), patterns);
-
-        _.forIn(patterns, function (value, key) {
-          if (value && typeof value === 'string') {
-            value = this.parse(value);
-          }
-          this.cache[name][key] = value;
-          if (isLayout) {
-            this.setLayout(this.cache[name][key]);
-          }
-        }.bind(this));
-        return this;
-      }
-    } catch (err) {
-      throw new Error('loadTemplates', err);
-    }
-  }
-
-  return this.cache[name];
-};
-
-
-/**
- * ## .partial
- *
- * Add a partial to `cache.partials`.
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.partial = function (key, str, locals) {
-  if (arguments.length === 1 && typeof key === 'string') {
-    return this.cache.partials[key];
-  }
-  this.loadTemplate('partials', false)(key, str, locals);
-};
-
-
-/**
- * ## .partials
- *
- * Add an object of partials to `cache.partials`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.partials = function (patterns, options) {
-  this.loadTemplates('partials', false, patterns, options);
-  return this;
-};
-
-
-/**
- * ## .page
- *
- * Add a page to `cache.pages`.
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.page = function (key, str, locals) {
-  if (arguments.length === 1 && typeof key === 'string') {
-    return this.cache.pages[key];
-  }
-  this.loadTemplate('pages', false)(key, str, locals);
-};
-
-
-/**
- * ## .pages
- *
- * Add an object of pages to `cache.pages`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.pages = function (patterns, options) {
-  this.loadTemplates('pages', false, patterns, options);
-  return this;
-};
-
-
-/**
- * ## .setLayout
- *
- * Proxy for `layoutCache.setLayout`.
- *
- * @api private
- */
-
-Template.prototype.setLayout = function(obj) {
-  this.layoutCache.setLayout(obj);
-};
-
-
-/**
- * ## .layout
- *
- * Add a layout to `cache.layouts`.
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.layout = function (key, str, locals) {
-  if (arguments.length === 1 && typeof key === 'string') {
-    return this.cache.layouts[key];
-  }
-  this.loadTemplate('layouts', true)(key, str, locals);
-};
-
-
-/**
- * ## .layouts
- *
- * Add an object of layouts to `cache.layouts`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.layouts = function (patterns, options) {
-  this.loadTemplates('layouts', true, patterns, options);
-  return this;
-};
-
-
-/**
- * ## .assertDelims
- *
- * Return `true` if template delimiters exist in `str`.
- *
- * @param  {String} `str`
- * @return {Boolean}
- * @api private
- */
-
-Template.prototype.assertDelims = function (str, re) {
-  return re ? str.indexOf(re.delims[0]) !== -1 &&
-    str.indexOf(re.delims[1]) !== -1 :
-    str.indexOf('<%') !== -1 ||
-    str.indexOf('${') !== -1;
-};
-
-
-/**
  * ## .parse
  *
  * Parse a string and extract yaml front matter.
@@ -612,9 +609,149 @@ Template.prototype.parse = function (str, options) {
 
 
 /**
+ * ## .parser
+ *
+ * Register a parser `fn` to be used on each `.src` file. This is used to parse
+ * front matter, but can be used for any kind of parsing.
+ *
+ * @param {String} `name` Optional name of the parser, for debugging.
+ * @param {Object} `options` Options to pass to parser.
+ * @param {Function} `fn` The parsing function.
+ * @return {Template} for chaining
+ * @api public
+ */
+
+Template.prototype.addParser = function (ext, stage, fn) {
+  if (ext[0] === '.') {
+    ext = ext.replace(/^\./, '');
+  }
+  if (typeof stage === 'function') {
+    fn = stage;
+    stage = 'before';
+  }
+
+  var parsers = this.cache.parsers[ext] || [];
+  fn = arrayify(fn).map(function(parser) {
+    if (typeof parser !== 'function') {
+      throw new TypeError('Template.parser() exception:', ext);
+    }
+    return parser;
+  }.bind(this));
+
+  this.cache.parsers[ext] = _.union([], parsers, fn);
+  return this;
+};
+
+
+/**
+ * ## .parse
+ *
+ * Traverse the `parser` stack, passing the `file` object to each
+ * parser and returning the accumlated result.
+ *
+ * @param  {Object} `options`
+ * @api private
+ */
+
+Template.prototype._parse = function (filepath, options) {
+  var opts = _.extend({}, options);
+  var ext = opts.ext || path.extname(filepath);
+
+  if (ext[0] === '.') {
+    ext = ext.replace(/^\./, '');
+  }
+  var parsers = this.cache.parsers[ext];
+  if (ext === '.*') {
+    parsers = [this.defaultParser];
+  }
+
+  // if (parsers && parsers.length) {
+  //   parsers.forEach(function (parser) {
+  //     try {
+  //       file = parser(str, options);
+  //     } catch (err) {
+  //       throw new Error('Template._parse() parsing error:', err));
+  //     }
+  //   });
+  // }
+};
+
+
+/**
+ * ## .parse
+ *
+ * Parse a string and extract yaml front matter.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.parse('---\ntitle: Home\n---\n<%= title %>');
+ * //=> {data: {title: "Home"}, content: "<%= title %>"}}
+ * ```
+ *
+ * @param  {String} `str` The string to parse.
+ * @param  {String} `Options` options to pass to [gray-matter].
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.parse = function (str, options) {
+  if (str) {
+    return matter(str, _.extend({autodetect: true}, options));
+  }
+  return str;
+};
+
+
+/**
+ * ## .compile
+ *
+ * Compile a template string.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.compile('<%= foo %>');
+ * ```
+ *
+ * @param  {String} `str` The actual template string.
+ * @param  {String} `settings` Delimiters to pass to Lo-dash.
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.compile = function (str, settings) {
+  return _.template(str, null, settings);
+};
+
+
+/**
+ * ## .compileFile
+ *
+ * Compile a template from a filepath.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.compileFile('templates/index.tmpl');
+ * ```
+ *
+ * @param  {String} `filepath`
+ * @param  {Object} `options`
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.compileFile = function (filepath, settings) {
+  return this.compile(fs.readFileSync(filepath, 'utf8'), settings);
+};
+
+
+/**
  * ## .renderFile
  *
- * Render a template `str` with the given `locals` and `options`.
+ * Render a template from a filepath with the
+ * given `locals` and `settings`.
  *
  * @param  {Object} `locals` Data to pass to registered view engines.
  * @param  {Object} `options` Options to pass to registered view engines.
@@ -622,15 +759,16 @@ Template.prototype.parse = function (str, options) {
  * @api public
  */
 
-Template.prototype.processFile = function (filepath, locals, settings) {
-  return this.process(fs.readFileSync(filepath, 'utf8'), locals, settings);
+Template.prototype.renderFile = function (filepath, locals, settings) {
+  return this.compileFile(filepath, settings)(locals);
 };
 
 
 /**
  * ## .render
  *
- * Render a template `str` with the given `locals` and `options`.
+ * Render a template `str` with the given
+ * `locals` and `settings`.
  *
  * @param  {Object} `locals` Data to pass to registered view engines.
  * @param  {Object} `options` Options to pass to registered view engines.
@@ -638,15 +776,26 @@ Template.prototype.processFile = function (filepath, locals, settings) {
  * @api public
  */
 
-Template.prototype.process = function (str, locals, settings) {
-  return this.render(str, locals, settings);
+Template.prototype.render = function (str, locals, settings) {
+  return this.compile(str, settings)(locals);
+};
+
+
+Template.prototype.buildLayout = function (content, layout, locals) {
+  debug('[building] layout: %s', bold(layout));
+  return this.layoutCache.inject(content, layout, {
+    locals: locals,
+    delims: this.get('layoutDelims'),
+    tag: this.get('layoutTag')
+  });
 };
 
 
 /**
- * ## .render
+ * ## .process
  *
- * Process a template `str` with the given `locals` and `settings`.
+ * Process a template `str` with the given
+ * `locals` and `settings`.
  *
  * @param  {String} `str` The template string.
  * @param  {Object} `locals` Optionally pass locals to use as context.
@@ -655,43 +804,47 @@ Template.prototype.process = function (str, locals, settings) {
  * @api public
  */
 
-Template.prototype.render = function (str, locals, settings) {
+Template.prototype.process = function (str, locals, settings) {
   debug('[rendering] template: %s', bold(str.substring(0, 150)));
+  settings = _.extend({}, settings);
+  locals = _.extend({}, locals);
   this.lazyLayouts();
 
-  var tmpl = this.parse(str);
-  locals = _.extend({}, locals);
-  var data = {};
-
-  _.extend(data, this.cache.locals);
-  _.extend(data, this.cache.data);
-  _.extend(data, locals);
-  _.extend(data, tmpl.data);
-  _.extend(this.cache.locals, data);
-
-  settings = _.extend({}, settings);
-  var delims = this.getDelims(settings.delims || data.delims);
-
-  var currentLayout = tmpl.layout || locals.layout;
   var original = str;
-  var layout;
+  var tmpl = this.parse(str);
+  var ctx = {};
 
-  if (currentLayout) {
-    debug('[building] layout: %s', bold(data.layout));
-    layout = this.layoutCache.inject(tmpl.content, currentLayout, {
-      locals: locals,
-      delims: this.get('layoutDelims'),
-      tag: this.get('layoutTag')
-    });
+  _.extend(ctx, this.cache.locals);
+  _.extend(ctx, this.cache.data);
+  _.extend(ctx, locals);
+  _.extend(ctx, tmpl.data);
+  _.extend(this.cache.locals, ctx);
 
-    debug('[flattened] %j', yellow(layout));
-    data = _.extend({}, data, layout.locals);
+  var delims = this.getDelims(settings.delims || ctx.delims);
+  var layout = tmpl.layout || locals.layout;
+
+  if (layout) {
+    layout = this.buildLayout(tmpl.content, layout, locals) || {};
   }
-  str = (layout && layout.content) || tmpl.content;
+  layout = layout || {};
 
-  settings = _.extend({imports: this.cache.helpers}, delims);
+  _.extend(ctx, layout.locals);
+  str = layout.content || tmpl.content;
+
+  // Extend helpers onto settings
+  settings = _.extend(settings, delims, {
+    imports: this.cache.helpers
+  });
+
+  // If no context is passed, return a compiled fn
+  if (!Object.keys(ctx).length) {
+    return this.compile(str, settings);
+  }
+
+  // Otherwise, recursively render templates and
+  // return a template string.
   while (this.assertDelims(str, delims)) {
-    str = _.template(str, data, settings);
+    str = this.render(str, ctx, settings);
     if (str === original) {
       break;
     }
