@@ -49,8 +49,9 @@ var cyan = chalk.cyan;
 
 function Template(options) {
   Cache.call(this, options);
-  this.extend(options);
-  this.defaultConfig();
+  var opts = options || {};
+  this.extend(opts);
+  this.defaultConfig(opts);
 }
 
 util.inherits(Template, Cache);
@@ -62,24 +63,24 @@ util.inherits(Template, Cache);
  * @api private
  */
 
-Template.prototype.defaultConfig = function() {
-  this.set('cwd', this.cache.cwd || process.cwd());
+Template.prototype.defaultConfig = function(opts) {
+  var cache = this.cache;
 
-  this.set('templates', this.cache.templates || {});
-  this.set('delims', this.cache.delims || {});
+  this.option('cwd', opts.cwd || process.cwd());
+  this.option('layout', opts.layout);
+  this.option('layoutTag', opts.layoutTag || 'body');
+  this.option('layoutDelims', opts.layoutDelims || ['{{', '}}']);
+  this.option('delims', opts.delims || {});
+  this.option('bindHelpers', true);
 
-  this.set('layout', this.cache.layout);
-  this.set('layoutDelims', this.cache.layoutDelims || ['{{', '}}']);
-  this.set('layoutTag', this.cache.layoutTag || 'body');
+  this.set('templates', opts.templates || {});
+  this.set('partials', opts.partials || {});
+  this.set('layouts', opts.layouts || {});
+  this.set('pages', opts.pages || {});
 
-  this.set('pages', this.cache.pages || {});
-  this.set('partials', this.cache.partials || {});
-  this.set('layouts', this.cache.layouts || {});
-  this.set('locals', this.cache.locals || {});
-
-  this.set('parsers', this.cache.parsers || {});
-  this.set('helpers', this.cache.helpers || {});
-  this.enable('bindHelpers');
+  this.set('helpers', opts.helpers || {});
+  this.set('parsers', opts.parsers || {});
+  this.set('locals', opts.locals || {});
 
   this.addDelims('default', ['<%', '%>']);
   this.addDelims('es6', ['${', '}'], {
@@ -104,13 +105,13 @@ Template.prototype.defaultConfig = function() {
 
 Template.prototype.lazyLayouts = function(options) {
   if (!this.layoutCache) {
-    var opts = _.extend({}, options);
+    var opts = _.extend({}, this.options, options);
 
     this.layoutCache = new Layouts({
       locals: opts.locals,
-      layouts: opts.layouts || this.get('layouts'),
-      delims: opts.layoutDelims || this.get('layoutDelims'),
-      tag: opts.layoutTag || this.get('layoutTag')
+      layouts: opts.layouts,
+      delims: opts.layoutDelims,
+      tag: opts.layoutTag
     });
   }
 };
@@ -135,7 +136,8 @@ Template.prototype.lazyLayouts = function(options) {
 
 Template.prototype.makeDelims = function (delims, options) {
   var opts = _.defaults({escape: true}, options);
-  return _.extend(delimiters.templates(delims, opts), options);
+  delims = delimiters.templates(delims, opts);
+  return _.extend(delims, options);
 };
 
 
@@ -244,132 +246,51 @@ Template.prototype.assertDelims = function (str, re) {
  */
 
 Template.prototype.load = function (patterns, options) {
-  var obj = {};
+  var locals = _.extend({}, options);
+  var opts = _.extend({}, this.options, options);
 
-  glob.sync(patterns, options).forEach(function (filepath) {
+  this.lazyLayouts(opts);
+  var o = {};
+
+  glob.sync(patterns, opts).forEach(function (filepath) {
     debug('loading %s', chalk.magenta(filepath));
 
     var name = path.basename(filepath, path.extname(filepath));
     var str = fs.readFileSync(filepath, 'utf8');
     if (options && options.requireable) {
-      if (this.enabled('bindHelpers')) {
-        obj[name] = _.bind(require(path.resolve(filepath)), this);
+      if (this.option('bindHelpers')) {
+        o[name] = _.bind(require(path.resolve(filepath)), this);
       } else {
-        obj[name] = require(path.resolve(filepath));
+        o[name] = require(path.resolve(filepath));
       }
     } else {
-      obj[name] = this.parse(str);
+      o[name] = this.parse(str);
+      if (locals[name]) {
+        o[name].data = _.extend({}, locals[name], o[name].data);
+      } else {
+        o[name].data = _.extend({}, locals, o[name].data);
+      }
     }
   }.bind(this));
+  return o;
+};
+
+
+/**
+ * ## .normalize
+ *
+ * Read a glob of files, parse them and return objects.
+ *
+ * @param  {String} `patterns` Glob patterns to use.
+ * @param  {Object} `options` Options to pass to [globby].
+ * @api public
+ */
+
+Template.prototype.normalize = function (key, str, locals) {
+  var obj = {};
+  obj[key] = this.parse(str);
+  obj[key].data = _.extend({}, locals, obj[key].data);
   return obj;
-};
-
-
-/**
- * ## .loadTemplate
- *
- * Add an object of loadTemplate to `cache[name]`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.loadTemplate = function (type, isLayout) {
-  this.lazyLayouts();
-  var self = this;
-
-  this.cache[type] = this.cache[type] || {};
-
-  return function (name, str, locals) {
-    var args = [].slice.call(arguments).filter(Boolean);
-    var arity = args.length;
-    var obj = {};
-
-    locals = locals || {};
-
-    if (arity === 1) {
-      // If it's an object, merge it onto the cache
-      if (typeof name === 'object') {
-        debug('[adding] %ss: %j', gray(type), Object.keys(name));
-        name.locals = _.extend({}, locals, name.locals);
-        if (isLayout) {
-          self.addLayout(name);
-        }
-        self.extend(type, name);
-        return self;
-      }
-      // If it's a string, return template from the cache
-      return self.cache[type][name];
-    } else if (typeof name === 'string' && typeof str === 'string') {
-      obj[name] = {};
-      obj[name] = self.parse(str);
-      obj[name].locals = obj[name].data || {};
-      delete obj[name].data;
-    } else {
-      var obj = {};
-      // obj[name] = {content: str};
-    }
-
-    obj[name].locals = _.extend({}, locals, obj[name].locals);
-
-    self.extend(type, obj);
-    if (isLayout) {
-      self.addLayout(self.cache.layouts);
-    }
-  };
-
-  return this;
-};
-
-
-/**
- * ## .partials
- *
- * Add an object of partials to `cache.partials`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.loadTemplates = function (name, isLayout, patterns, options) {
-  var opts = _.extend({}, options);
-  this.lazyLayouts();
-
-  this.cache[name] = this.cache[name] || {};
-
-  if (arguments.length > 0) {
-    try {
-      var isGlob = (typeof patterns === 'string' || Array.isArray(patterns));
-      if (isGlob) {
-        debug('[loading] %s: %s', gray(name), patterns);
-        patterns = this.load(patterns, opts);
-      }
-
-      var isObject = (typeof patterns === 'object' && !Array.isArray(patterns));
-      if (isObject) {
-        debug('[registering] %s object: %j', gray(name), patterns);
-
-        _.forIn(patterns, function (value, key) {
-          if (value && typeof value === 'string') {
-            value = this.parse(value);
-          }
-          this.cache[name][key] = value;
-          if (isLayout) {
-            this.addLayout(this.cache[name][key]);
-          }
-        }.bind(this));
-        return this;
-      }
-    } catch (err) {
-      throw new Error('loadTemplates', err);
-    }
-  }
-
-  return this.cache[name];
 };
 
 
@@ -389,7 +310,9 @@ Template.prototype.partial = function (key, str, locals) {
   if (arguments.length === 1 && typeof key === 'string') {
     return this.cache.partials[key];
   }
-  this.loadTemplate('partials', false)(key, str, locals);
+  debug('registering partials %s:', chalk.magenta(key));
+  this.extend('partials', this.normalize(key, str, locals));
+  return this;
 };
 
 
@@ -404,8 +327,9 @@ Template.prototype.partial = function (key, str, locals) {
  * @api public
  */
 
-Template.prototype.partials = function (patterns, locals) {
-  this.loadTemplates('partials', false, patterns, locals);
+Template.prototype.partials = function (glob, locals) {
+  debug('registering partials %s:', chalk.magenta(glob));
+  this.extend('partials', this.load(glob, locals));
   return this;
 };
 
@@ -426,7 +350,9 @@ Template.prototype.page = function (key, str, locals) {
   if (arguments.length === 1 && typeof key === 'string') {
     return this.cache.pages[key];
   }
-  this.loadTemplate('pages', false)(key, str, locals);
+  debug('registering pages %s:', chalk.magenta(key));
+  this.extend('pages', this.normalize(key, str, locals));
+  return this;
 };
 
 
@@ -441,8 +367,9 @@ Template.prototype.page = function (key, str, locals) {
  * @api public
  */
 
-Template.prototype.pages = function (patterns, options) {
-  this.loadTemplates('pages', false, patterns, options);
+Template.prototype.pages = function (glob, locals) {
+  debug('registering pages %s:', chalk.magenta(glob));
+  this.extend('pages', this.load(glob, locals));
   return this;
 };
 
@@ -456,6 +383,7 @@ Template.prototype.pages = function (patterns, options) {
  */
 
 Template.prototype.addLayout = function(obj) {
+  this.lazyLayouts();
   this.layoutCache.setLayout(obj);
 };
 
@@ -476,7 +404,11 @@ Template.prototype.layout = function (key, str, locals) {
   if (arguments.length === 1 && typeof key === 'string') {
     return this.cache.layouts[key];
   }
-  this.loadTemplate('layouts', true)(key, str, locals);
+  debug('registering layouts %s:', chalk.magenta(key));
+  var obj = this.normalize(key, str, locals);
+  this.extend('layouts', obj);
+  this.addLayout(obj);
+  return this;
 };
 
 
@@ -491,10 +423,34 @@ Template.prototype.layout = function (key, str, locals) {
  * @api public
  */
 
-Template.prototype.layouts = function (patterns, options) {
-  this.loadTemplates('layouts', true, patterns, options);
+Template.prototype.layouts = function (glob, locals) {
+  debug('registering layouts %s:', chalk.magenta(glob));
+  var obj = this.load(glob, locals);
+  this.extend('layouts', obj);
+  this.addLayout(obj);
   return this;
 };
+
+
+/**
+ * Build a layout based on a template's current context.
+ *
+ * @param  {String} `content` The template string.
+ * @param  {String} `layout` The layout name.
+ * @param  {Object} `locals` Context.
+ * @return {Object}
+ */
+
+Template.prototype.buildLayout = function (content, layout, locals) {
+  debug('[building] layout: %s', bold(layout));
+
+  return this.layoutCache.inject(content, layout, {
+    locals: locals,
+    delims: this.option('layoutDelims'),
+    tag: this.option('layoutTag')
+  });
+};
+
 
 /**
  * ## .addHelper
@@ -523,8 +479,7 @@ Template.prototype.layouts = function (patterns, options) {
 
 Template.prototype.addHelper = function (key, value) {
   debug('register helper %s', chalk.magenta(key));
-
-  if (this.enabled('bindHelpers')) {
+  if (this.option('bindHelpers')) {
     this.cache.helpers[key] = _.bind(value, this);
   } else {
     this.cache.helpers[key] = value;
@@ -601,8 +556,13 @@ Template.prototype._defaultHelpers = function () {
  * @api public
  */
 
-Template.prototype.parse = function (str, options) {
-  return matter(str, _.extend({autodetect: true}, options));
+Template.prototype.parse = function (str, ops) {
+  if (str) {
+    var file = matter(str, _.extend({autodetect: true}, ops));
+    file.content = file.content.replace(/^\s*/, '');
+    return file;
+  }
+  return str;
 };
 
 
@@ -676,32 +636,6 @@ Template.prototype._parse = function (filepath, options) {
 
 
 /**
- * ## .parse
- *
- * Parse a string and extract yaml front matter.
- *
- * **Example:**
- *
- * ```js
- * template.parse('---\ntitle: Home\n---\n<%= title %>');
- * //=> {data: {title: "Home"}, content: "<%= title %>"}}
- * ```
- *
- * @param  {String} `str` The string to parse.
- * @param  {String} `Options` options to pass to [gray-matter].
- * @return {String}
- * @api public
- */
-
-Template.prototype.parse = function (str, options) {
-  if (str) {
-    return matter(str, _.extend({autodetect: true}, options));
-  }
-  return str;
-};
-
-
-/**
  * ## .compile
  *
  * Compile a template string.
@@ -719,7 +653,7 @@ Template.prototype.parse = function (str, options) {
  */
 
 Template.prototype.compile = function (str, settings) {
-  return _.template(str, null, settings);
+  return this.process(str, null, settings);
 };
 
 
@@ -758,7 +692,7 @@ Template.prototype.compileFile = function (filepath, settings) {
  */
 
 Template.prototype.renderFile = function (filepath, locals, settings) {
-  return this.compileFile(filepath, settings)(locals);
+  return this.render(fs.readFileSync(filepath, 'utf8'), locals, settings);
 };
 
 
@@ -774,18 +708,10 @@ Template.prototype.renderFile = function (filepath, locals, settings) {
  * @api public
  */
 
-Template.prototype.render = function (str, locals, settings) {
-  return this.compile(str, settings)(locals);
-};
-
-
-Template.prototype.buildLayout = function (content, layout, locals) {
-  debug('[building] layout: %s', bold(layout));
-  return this.layoutCache.inject(content, layout, {
-    locals: locals,
-    delims: this.get('layoutDelims'),
-    tag: this.get('layoutTag')
-  });
+Template.prototype.render = function (name, locals, settings) {
+  var tmpl = this.cache.pages[name] || this.cache.partials[name];
+  var ctx = _.extend({}, locals, tmpl.data);
+  return this.process(tmpl.content, ctx, settings);
 };
 
 
@@ -813,20 +739,19 @@ Template.prototype.process = function (str, locals, settings) {
   var ctx = {};
 
   _.extend(ctx, this.cache.locals);
-  _.extend(ctx, this.cache.data);
   _.extend(ctx, locals);
   _.extend(ctx, tmpl.data);
   _.extend(this.cache.locals, ctx);
 
   var delims = this.getDelims(settings.delims || ctx.delims);
-  var layout = tmpl.layout || locals.layout;
+  var layout = ctx.layout;
 
   if (layout) {
-    layout = this.buildLayout(tmpl.content, layout, locals) || {};
+    layout = this.buildLayout(tmpl.content, layout, ctx) || {};
   }
   layout = layout || {};
 
-  _.extend(ctx, layout.locals);
+  _.extend(ctx, layout.data);
   str = layout.content || tmpl.content;
 
   // Extend helpers onto settings
@@ -836,13 +761,13 @@ Template.prototype.process = function (str, locals, settings) {
 
   // If no context is passed, return a compiled fn
   if (!Object.keys(ctx).length) {
-    return this.compile(str, settings);
+    return _.template(str, null, settings);
   }
 
   // Otherwise, recursively render templates and
   // return a template string.
   while (this.assertDelims(str, delims)) {
-    str = this.render(str, ctx, settings);
+    str = _.template(str, ctx, settings);
     if (str === original) {
       break;
     }
