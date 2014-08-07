@@ -84,10 +84,7 @@ describe('template locals:', function () {
     it('should pass the context to templates:', function () {
       var template = new Template({
         locals: {
-          a: 'AA',
-          b: 'BB',
-          c: 'CC',
-          d: 'DD',
+          title: 'GLOBAL',
           layout: 'a'
         }
       });

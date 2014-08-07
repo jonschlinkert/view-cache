@@ -750,7 +750,7 @@ Template.prototype.render = function (name, locals, settings) {
 
 Template.prototype.process = function (str, locals, settings) {
   if (typeof str !== 'string') {
-    throw new Error('Template#process() expects a string.');
+    throw new Error('Template#process() expects a string as the first param.');
   }
 
   debug('[rendering] template: %s', bold(str.substring(0, 150)));

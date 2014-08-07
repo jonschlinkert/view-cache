@@ -129,4 +129,33 @@ describe('template context', function () {
     });
 
   });
+
+  it('should pass the context to templates:', function () {
+    var template = new Template({
+      locals: {title: 'GLOBAL'}
+    });
+
+    template.layout('x', 'LAYOUT <%= title %>', {layout: 'b', title: 'LAYOUT XXX'});
+    template.layout('y', 'LAYOUT <%= title %>', {layout: 'nil', title: 'LAYOUT YYY'});
+
+    template.partial('a', 'PARTIAL <%= title %>', {title: 'PARTIAL AAA'});
+    template.partial('b', 'PARTIAL <%= title %>', {title: 'PARTIAL BBB'});
+    template.partial('c', 'PARTIAL <%= title %>', {title: 'PARTIAL CCC'});
+    template.partial('d', 'PARTIAL <%= title %>', {title: 'PARTIAL DDD'});
+
+    var a = template.process('<%= partial("a") %>', {title: 'PROCESS AA', layout: 'x'});
+    var b = template.process('<%= partial("b") %>', {title: 'PROCESS BB', layout: 'x'});
+    var c = template.process('<%= partial("c") %>', {title: 'PROCESS CC', layout: 'x'});
+    var d = template.process('<%= partial("d") %>', {title: 'PROCESS DD', layout: 'x'});
+
+    var aa = template.render('a', {title: 'RENDER AA'});
+    var bb = template.render('b', {title: 'RENDER BB'});
+    var cc = template.render('c', {title: 'RENDER CC'});
+    var dd = template.render('d', {title: 'RENDER DD'});
+
+    a.should.equal('PARTIAL PARTIAL AAA');
+    b.should.equal('PARTIAL PARTIAL BBB');
+    c.should.equal('PARTIAL PARTIAL CCC');
+    d.should.equal('PARTIAL PARTIAL DDD');
+  });
 });
