@@ -106,6 +106,7 @@ describe('template layouts', function () {
       actual.should.eql(expected);
     });
   });
+
   describe('layout locals:', function () {
     it('should move locals to a `data` property.', function () {
       var template = new Template();
@@ -132,7 +133,7 @@ describe('template layouts', function () {
     it('should stack layouts when the `<%= partial() %>` tag is used.', function () {
       var template = new Template();
 
-      template.layout('last', '\nlast\n{{body}}\nlast');
+      template.layout('last', '\nlast\n{{body}}\nlast', {title: 'LAST'});
       template.layout('b', '\nBEFORE <%= title %> {{body}}\nAFTER <%= title %>', {
         title: 'BBB',
         layout: 'last',
@@ -141,11 +142,10 @@ describe('template layouts', function () {
         title: 'AAA',
         layout: 'b'
       });
-
       template.partial('a', 'This is partial <%= a %>', {layout: 'a', a: 'A'});
 
-      var actual = template.process('\n<%= partial("a") %>', {a: 'A'})
-      actual.should.eql('\nBEFORE A \nlast\n\nThis is partial A\nlast\nAFTER A');
+      var actual = template.process('<%= partial("a") %>', {a: 'B'})
+      actual.should.eql('\nBEFORE AAA \nlast\n\nThis is partial AAA\nlast\nAFTER A');
     });
 
     xit('should stack layouts when the `<%= partial() %>` tag is used.', function () {
@@ -165,7 +165,6 @@ describe('template layouts', function () {
       template.partial('a', 'This is partial <%= title %>\n{{body}}', {title: 'AAA'});
       template.layout('one', '\nBEFORE <%= title %> {{body}}\nAFTER <%= title %>', {layout: 'last', title: 'LAYOUT ONE'});
       template.layout('last', '\nlast\n{{body}}\nlast');
-
       var actual = template.process('\n<%= partial("a") %>', {layout: 'one', a: 'A', b: 'B'})
       actual.should.eql('last\nBEFORE LAYOUT ONE This is partial AAA\n{{body}}\nAFTER LAYOUT ONE\nlast');
     });
@@ -349,12 +348,10 @@ describe('template layouts', function () {
       // var c = template.process('<%= partial("c") %>', {title: 'Local CC'});
       // var d = template.process('<%= partial("d") %>', {title: 'Local DD'});
 
-
       template.partial('a').should.have.property('layout');
       template.partial('a').layout.should.equal('default');
       template.partial('a').should.have.property('data');
       template.partial('a').should.have.property('content');
-
 
       a.should.equal('last\nLAYOUT THREE LAYOUT TWO LAYOUT ONE defaultThis is partial AAAdefault\nLAYOUT ONE\nLAYOUT TWO\nLAYOUT THREE\nlast');
       // b.should.equal('defaultThis is partial BBBdefault');
@@ -417,35 +414,27 @@ describe('template layouts', function () {
     it('should use layouts defined when the partial is registered:', function () {
       var template = new Template();
 
-      console.log(chalk.cyan.bold('-----------------------------------'));
-
       template.layouts(['test/fixtures/layouts/*.md'], {
         a: {title: 'A', layout: 'b'},
         b: {title: 'B', layout: 'c'},
         c: {title: 'C', layout: 'd'},
         d: {title: 'D', layout: undefined}
       });
-      console.log(chalk.bold('-----------------------------------'));
 
       template.partial('a', 'hello <%= title %>', {layout: 'a'});
       template.partial('b', 'hello <%= title %>', {layout: 'b'});
       template.partial('c', 'hello <%= title %>', {layout: 'c'});
       template.partial('d', 'hello <%= title %>', {layout: 'd'});
 
-      console.log(chalk.yellow.bold('-----------------------------------'));
-
       var a = template.render('a', {layout: 'a', title: 'AAA'});
       var b = template.render('b', {layout: 'b', title: 'BBB'});
       var c = template.render('c', {layout: 'c', title: 'CCC'});
       var d = template.render('d', {layout: 'd', title: 'DDD'});
-      console.log(chalk.magenta.bold('-----------------------------------'));
 
       // a.should.equal('A ABOVE\nhello AAA\nA BELOW');
       // b.should.equal('B ABOVE\nhello BBB\nB BELOW');
       // c.should.equal('C ABOVE\nhello CCC\nC BELOW');
       // d.should.equal('D ABOVE\nhello DDD\nD BELOW');
-
-      console.log(chalk.red.bold('-----------------------------------'));
 
     });
   });

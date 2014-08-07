@@ -68,6 +68,7 @@ Template.prototype.defaultConfig = function(opts) {
   this.option('layout', opts.layout);
   this.option('layoutTag', opts.layoutTag || 'body');
   this.option('layoutDelims', opts.layoutDelims || ['{{', '}}']);
+  this.option('partialLayout', opts.partialLayout);
   this.option('delims', opts.delims || {});
   this.option('bindHelpers', true);
 
@@ -651,10 +652,40 @@ Template.prototype.addHelpers = function (pattern, options) {
  */
 
 Template.prototype._defaultHelpers = function (options) {
-  this.addHelper('partial', function (name, locals) {
+  var self = this;
+
+  /**
+   * Partial helpers
+   *
+   * @param  {String} `name`
+   * @param  {Object} `locals`
+   * @return {String}
+   */
+
+  this.addHelper('partial', function (name, locals, settings) {
     debug('%s [loading] partial %s:', green('helper'), bold(name));
-    return this.render(name, locals);
+    return self.render(name, _.extend({}, this, locals), settings);
   });
+};
+
+
+/**
+ * Compile a template string.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.compile('<%= foo %>');
+ * ```
+ *
+ * @param  {String} `str` The actual template string.
+ * @param  {String} `settings` Delimiters to pass to Lo-dash.
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.compile = function (str, settings) {
+  return this.process(str, null, settings);
 };
 
 
@@ -698,26 +729,6 @@ Template.prototype.renderFile = function (filepath, locals, settings) {
 
 
 /**
- * Compile a template string.
- *
- * **Example:**
- *
- * ```js
- * template.compile('<%= foo %>');
- * ```
- *
- * @param  {String} `str` The actual template string.
- * @param  {String} `settings` Delimiters to pass to Lo-dash.
- * @return {String}
- * @api public
- */
-
-Template.prototype.compile = function (str, settings) {
-  return this.process(str, null, settings);
-};
-
-
-/**
  * Render a template `str` with the given
  * `locals` and `settings`.
  *
@@ -730,6 +741,7 @@ Template.prototype.compile = function (str, settings) {
 Template.prototype.render = function (name, locals, settings) {
   var tmpl = this.cache.pages[name] || this.cache.partials[name];
   var ctx = _.defaults({layout: tmpl.layout}, tmpl.data, locals);
+
   return this.process(tmpl.content, ctx, settings);
 };
 
@@ -764,10 +776,15 @@ Template.prototype.process = function (str, locals, settings) {
 
   _.extend(ctx, layout.data);
   str = layout.content || tmpl.content;
+  var helpers = {};
+
+  _.forIn(this.cache.helpers, function (value, key) {
+    helpers[key] = value.bind(ctx);
+  });
 
   // Extend helpers onto settings
   settings = _.extend(settings, delims, {
-    imports: this.cache.helpers
+    imports: helpers
   });
 
   // Otherwise, recursively render templates and

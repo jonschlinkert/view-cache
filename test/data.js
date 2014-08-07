@@ -14,13 +14,11 @@ var _ = require('lodash');
 
 describe('template data', function () {
   describe('.data():', function () {
-
     it('should extend the `context` with data.', function () {
       var template = new Template();
       template.data({a: 'A', b: 'B'});
 
       var data = template.cache.data;
-
       data.should.have.property('a');
       data.a.should.equal('A');
     });
@@ -32,7 +30,6 @@ describe('template data', function () {
         .data({c: 'C', d: 'D'});
 
       var data = template.cache.data;
-
       data.should.have.property('a');
       data.should.have.property('b');
       data.should.have.property('c');

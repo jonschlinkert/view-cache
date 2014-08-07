@@ -32,7 +32,6 @@ describe('template layout delimiters', function () {
     template.layout('b', '\nBEFORE <%= b %> {% foo %}\nAFTER <%= b %>', {layout: 'c'});
     template.layout('c', '\nBEFORE <%= c %> {% foo %}\nAFTER <%= c %>', {layout: 'last'});
 
-
     template.partial('a', 'This is partial <%= a %>');
     template.partial('b', 'This is partial <%= b %>');
     template.partials({
