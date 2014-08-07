@@ -72,6 +72,7 @@ Template.prototype.defaultConfig = function() {
   this.set('layoutDelims', this.cache.layoutDelims || ['{{', '}}']);
   this.set('layoutTag', this.cache.layoutTag || 'body');
 
+  this.set('engines', this.cache.engines || {});
   this.set('pages', this.cache.pages || {});
   this.set('partials', this.cache.partials || {});
   this.set('layouts', this.cache.layouts || {});
@@ -79,6 +80,8 @@ Template.prototype.defaultConfig = function() {
 
   this.set('parsers', this.cache.parsers || {});
   this.set('helpers', this.cache.helpers || {});
+
+  this.set('view engine', 'noop');
   this.enable('bindHelpers');
 
   this.addDelims('default', ['<%', '%>']);
@@ -86,6 +89,7 @@ Template.prototype.defaultConfig = function() {
     interpolate: /\$\{([^\\}]*(?:\\.[^\\}]*)*)\}/g
   });
 
+  this._defaultEngines();
   this._defaultHelpers();
 };
 
@@ -216,6 +220,57 @@ Template.prototype.getDelims = function(name) {
 
 
 /**
+ * ## .engine
+ *
+ * Register the given view engine callback `fn` as `ext`.
+ *
+ * {%= docs("api-engine") %}
+ *
+ * @param {String} `ext`
+ * @param {Function|Object} `fn` or `options`
+ * @param {Object} `options`
+ * @return {Template} for chaining
+ * @api public
+ */
+
+Template.prototype.engine = function (ext, fn, options) {
+  var engine = {};
+  if (typeof fn === 'function') {
+    engine.renderFile = fn;
+    engine.render = fn.render;
+  } else if (typeof fn === 'object') {
+    engine = fn;
+    engine.renderFile = fn.renderFile || fn.__express;
+  }
+
+  engine.options = fn.options || options || {};
+
+  if (typeof engine.render !== 'function') {
+    throw new Error('Template', 'Engines are expected to have a `render` method.');
+  }
+
+  if (ext[0] !== '.') {
+    ext = '.' + ext;
+  }
+  this.cache.engines[ext] = engine;
+
+  // var lang = language.lang(ext.replace(/^\./, ''));
+
+  // // if the language has mapped delimiters, create a layout stack.
+  // if (/md/.test(ext) || (delimiterMap(lang) && delimiterMap(lang).length)) {
+
+  //   // Get the layout delimiters to use for the current engine.
+  //   var getEngineDelims = utils.engineDelims(ext);
+
+  //   // Create a `Layout` instance for this engine
+  //   var layoutOpts = extend({}, {delims: getEngineDelims}, options);
+  //   this._layouts[ext] = new Layouts(layoutOpts);
+  // }
+  return this;
+};
+
+
+/**
  * ## .addHelper
  *
  * Add a custom template helper.
@@ -301,6 +356,10 @@ Template.prototype._defaultHelpers = function () {
   }.bind(this));
 };
 
+
+Template.prototype._defaultEngines = function() {
+  this.engine('default', require('./engines/default'));
+};
 
 /**
  * ## .load
@@ -672,6 +731,14 @@ Template.prototype.render = function (str, locals, settings) {
   settings = _.extend({}, settings);
   var delims = this.getDelims(settings.delims || data.delims);
 
+  var ext = data.ext || settings.ext || this.get('view engine');
+  if (ext[0] !== '.') {
+    ext = '.' + ext;
+  }
+  var engine = this.get(['engines', ext]);
+  if (!engine) {
+    engine = this.cache.engines['.default'];
+  }
   var currentLayout = tmpl.layout || locals.layout;
   var original = str;
   var layout;
@@ -689,9 +756,10 @@ Template.prototype.render = function (str, locals, settings) {
   }
   str = (layout && layout.content) || tmpl.content;
 
-  settings = _.extend({imports: this.cache.helpers}, delims);
+  settings = _.extend({helpers: this.cache.helpers}, delims);
   while (this.assertDelims(str, delims)) {
-    str = _.template(str, data, settings);
+    data.settings = settings;
+    str = engine.render(str, data);
     if (str === original) {
       break;
     }

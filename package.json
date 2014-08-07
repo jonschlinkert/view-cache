@@ -37,6 +37,8 @@
     "test": "mocha -R spec"
   },
   "devDependencies": {
+    "engines": "^0.3.1",
+    "handlebars": "^2.0.0-alpha.4",
     "mocha": "~1.18.2",
     "should": "^4.0.4",
     "verb": "^0.2.14"
