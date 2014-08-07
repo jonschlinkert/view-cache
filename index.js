@@ -289,35 +289,33 @@ Template.prototype.loadTemplate = function (name, isLayout) {
     locals = locals || {};
 
     if (arity === 1) {
-      // If only one arg is passed and it's an object,
-      // merge it onto the cache
+      // If it's an object, merge it onto the cache
       if (typeof key === 'object') {
         debug('[adding] %ss: %j', gray(name), Object.keys(key));
-        key.locals = locals;
+        key.locals = _.extend({}, locals, key.locals);
         if (isLayout) {
           self.addLayout(key);
-        } else {
-          locals.layout = locals.layout || global.layout;
         }
         self.extend(name, key);
         return self;
       }
-      // If only one arg is passed, and it's a string,
-      // return the named template from the cache
+      // If it's a string, return template from the cache
       return self.cache[name][key];
     }
 
     debug('[adding] %s: %s', gray(name), key);
 
+    var obj = {};
     if (typeof key === 'string' && typeof str === 'string') {
-      self.cache[name][key] = self.parse(str);
+      obj = self.parse(str);
+      obj.locals = obj.data;
+      delete obj.data;
     } else {
-      self.cache[name][key] = str;
+      obj = str;
     }
 
-    self.cache[name][key].locals = locals;
-    self.cache[name][key].layout = locals.layout;
-    delete self.cache[name][key].locals.layout;
+    obj.locals = _.extend({}, locals, obj.locals);
+    self.cache[name][key] = obj;
 
     if (isLayout) {
       self.addLayout(self.cache.layouts);
@@ -408,8 +406,8 @@ Template.prototype.partial = function (key, str, locals) {
  * @api public
  */
 
-Template.prototype.partials = function (patterns, options) {
-  this.loadTemplates('partials', false, patterns, options);
+Template.prototype.partials = function (patterns, locals) {
+  this.loadTemplates('partials', false, patterns, locals);
   return this;
 };
 
@@ -783,6 +781,16 @@ Template.prototype.render = function (str, locals, settings) {
 };
 
 
+Template.prototype.buildLayout = function (content, layout, locals) {
+  debug('[building] layout: %s', bold(layout));
+  return this.layoutCache.inject(content, layout, {
+    locals: locals,
+    delims: this.get('layoutDelims'),
+    tag: this.get('layoutTag')
+  });
+};
+
+
 /**
  * ## .process
  *
@@ -798,49 +806,45 @@ Template.prototype.render = function (str, locals, settings) {
 
 Template.prototype.process = function (str, locals, settings) {
   debug('[rendering] template: %s', bold(str.substring(0, 150)));
+  settings = _.extend({}, settings);
+  locals = _.extend({}, locals);
   this.lazyLayouts();
 
-  var tmpl = this.parse(str);
-  locals = _.extend({}, locals);
-  var data = {};
-
-  _.extend(data, this.cache.locals);
-  _.extend(data, this.cache.data);
-  _.extend(data, locals);
-  _.extend(data, tmpl.data);
-  _.extend(this.cache.locals, data);
-
-  settings = _.extend({}, settings);
-  var delims = this.getDelims(settings.delims || data.delims);
-
-  var currentLayout = tmpl.layout || locals.layout;
   var original = str;
-  var layout;
+  var tmpl = this.parse(str);
+  var ctx = {};
 
-  if (currentLayout) {
-    debug('[building] layout: %s', bold(data.layout));
-    layout = this.layoutCache.inject(tmpl.content, currentLayout, {
-      locals: locals,
-      delims: this.get('layoutDelims'),
-      tag: this.get('layoutTag')
-    });
+  _.extend(ctx, this.cache.locals);
+  _.extend(ctx, this.cache.data);
+  _.extend(ctx, locals);
+  _.extend(ctx, tmpl.data);
+  _.extend(this.cache.locals, ctx);
 
-    debug('[flattened] %j', yellow(layout));
-    data = _.extend({}, data, layout.locals);
+  var delims = this.getDelims(settings.delims || ctx.delims);
+  var layout = tmpl.layout || locals.layout;
+
+  if (layout) {
+    layout = this.buildLayout(tmpl.content, layout, locals) || {};
   }
-  str = (layout && layout.content) || tmpl.content;
+  layout = layout || {};
 
-  settings = _.extend({imports: this.cache.helpers}, delims);
+  _.extend(ctx, layout.locals);
+  str = layout.content || tmpl.content;
 
-  // If no data is passed, return a compiled fn
-  if (!Object.keys(data).length) {
+  // Extend helpers onto settings
+  settings = _.extend(settings, delims, {
+    imports: this.cache.helpers
+  });
+
+  // If no context is passed, return a compiled fn
+  if (!Object.keys(ctx).length) {
     return this.compile(str, settings);
   }
 
   // Otherwise, recursively render templates and
   // return a template string.
   while (this.assertDelims(str, delims)) {
-    str = this.compile(str, settings)(data);
+    str = this.render(str, ctx, settings);
     if (str === original) {
       break;
     }
