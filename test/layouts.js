@@ -96,12 +96,23 @@ describe('template layouts', function () {
 
     it('should stack layouts when the `<%= partial() %>` tag is used.', function () {
       var template = new Template();
+      template.layout('last', '\nlast\n{{body}}\nlast');
+      template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'last'});
+
+      template.partial('a', 'This is partial <%= a %>', {layout: 'a', a: 'A'});
+
+      var actual = template.process('\n<%= partial("a") %>', {a: 'A'})
+      actual.should.eql('\nBEFORE A \nlast\n\nThis is partial A\nlast\nAFTER A');
+    });
+
+    it('should stack layouts when the `<%= partial() %>` tag is used.', function () {
+      var template = new Template();
       template.layout('last', '\nlast\n{{body}}\nlast', {layout: 'a'});
-      template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
+      template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'last'});
 
       template.partial('a', 'This is partial <%= a %>');
 
-      var actual = template.process('\n<%= partial("a") %>', {layout: 'last', a: 'A'})
+      var actual = template.process('\n<%= partial("a") %>', {layout: 'a', a: 'A'})
       actual.should.eql('\nBEFORE A \nlast\n\nThis is partial A\nlast\nAFTER A');
     });
 

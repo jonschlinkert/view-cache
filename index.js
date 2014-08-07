@@ -276,47 +276,45 @@ Template.prototype.load = function (patterns, options) {
  * @api public
  */
 
-Template.prototype.loadTemplate = function (name, isLayout) {
+Template.prototype.loadTemplate = function (type, isLayout) {
   this.lazyLayouts();
   var self = this;
 
-  this.cache[name] = this.cache[name] || {};
+  this.cache[type] = this.cache[type] || {};
 
-  return function (key, str, locals) {
+  return function (name, str, locals) {
     var args = [].slice.call(arguments).filter(Boolean);
     var arity = args.length;
+    var obj = {};
 
     locals = locals || {};
 
     if (arity === 1) {
       // If it's an object, merge it onto the cache
-      if (typeof key === 'object') {
-        debug('[adding] %ss: %j', gray(name), Object.keys(key));
-        key.locals = _.extend({}, locals, key.locals);
+      if (typeof name === 'object') {
+        debug('[adding] %ss: %j', gray(type), Object.keys(name));
+        name.locals = _.extend({}, locals, name.locals);
         if (isLayout) {
-          self.addLayout(key);
+          self.addLayout(name);
         }
-        self.extend(name, key);
+        self.extend(type, name);
         return self;
       }
       // If it's a string, return template from the cache
-      return self.cache[name][key];
-    }
-
-    debug('[adding] %s: %s', gray(name), key);
-
-    var obj = {};
-    if (typeof key === 'string' && typeof str === 'string') {
-      obj = self.parse(str);
-      obj.locals = obj.data;
-      delete obj.data;
+      return self.cache[type][name];
+    } else if (typeof name === 'string' && typeof str === 'string') {
+      obj[name] = {};
+      obj[name] = self.parse(str);
+      obj[name].locals = obj[name].data || {};
+      delete obj[name].data;
     } else {
-      obj = str;
+      var obj = {};
+      // obj[name] = {content: str};
     }
 
-    obj.locals = _.extend({}, locals, obj.locals);
-    self.cache[name][key] = obj;
+    obj[name].locals = _.extend({}, locals, obj[name].locals);
 
+    self.extend(type, obj);
     if (isLayout) {
       self.addLayout(self.cache.layouts);
     }
