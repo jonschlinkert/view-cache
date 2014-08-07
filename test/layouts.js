@@ -222,90 +222,90 @@ describe('template layouts', function () {
     //   d.should.equal('This is partial DD');
     // });
 
-    // xit('should use layouts defined on the locals of a template.', function () {
-    //   var template = new Template({locals: {title: 'GLOBAL'}});
+    it('should use layouts defined on the locals of a template.', function () {
+      var template = new Template({locals: {title: 'GLOBAL'}});
 
-    //   template.layout('GLOBAL', '\nGLOBAL\n{{body}}\nGLOBAL');
-    //   template.layout('last', '\nlast\n{{body}}\nlast');
-    //   template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
-    //   template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
-    //   template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'last'});
+      template.layout('GLOBAL', '\nGLOBAL\n{{body}}\nGLOBAL');
+      template.layout('last', '\nlast\n{{body}}\nlast');
+      template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
+      template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
+      template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'last'});
 
-    //   template.partial('a', 'This is partial <%= a %>', {layout: 'a'});
-    //   template.partial('b', 'This is partial <%= b %>', {layout: 'b'});
-    //   template.partial('c', 'This is partial <%= c %>', {layout: 'c'});
-    //   template.partial('d', 'This is partial <%= d %>', {layout: 'd'});
+      template.partial('a', 'This is partial <%= a %>', {layout: 'a', a: 'AAA'});
+      template.partial('b', 'This is partial <%= b %>', {layout: 'b', b: 'BBB'});
+      template.partial('c', 'This is partial <%= c %>', {layout: 'c', c: 'CCC'});
+      template.partial('d', 'This is partial <%= d %>', {layout: 'last', d: 'DDD'});
 
-    //   var a = template.process('<%= partial("a", {layout: "a"}) %>', {title: 'Local AA'});
-    //   var b = template.process('<%= partial("b", {layout: "a"}) %>', {title: 'Local BB'});
-    //   var c = template.process('<%= partial("c", {layout: "a"}) %>', {title: 'Local CC'});
-    //   var d = template.process('<%= partial("d", {layout: "a"}) %>', {title: 'Local DD'});
+      var a = template.process('<%= partial("a", {layout: "a"}) %>', {title: 'Local AA'});
+      var b = template.process('<%= partial("b", {layout: "b"}) %>', {title: 'Local BB'});
+      var c = template.process('<%= partial("c", {layout: "c"}) %>', {title: 'Local CC'});
+      var d = template.process('<%= partial("d", {layout: "last"}) %>', {title: 'Local DD'});
 
-    //   a.should.equal('This is partial AA');
-    //   b.should.equal('This is partial BB');
-    //   c.should.equal('This is partial CC');
-    //   d.should.equal('This is partial DD');
-    // });
+      // a.should.equal('This is partial AA');
+      // b.should.equal('This is partial BB');
+      // c.should.equal('This is partial CC');
+      d.should.equal('This is partial DD');
+    });
   });
 
 
-  // describe('layouts context', function () {
-  //   it('should process layouts with the given context.', function () {
-  //     var template = new Template();
+  describe('layouts context', function () {
+    it('should process layouts with the given context.', function () {
+      var template = new Template();
 
-  //     template.layouts(['test/fixtures/*.md']);
-  //     template.partial('a', 'hello <%= a %>');
-  //     template.partial('b', 'hello <%= b %>');
+      template.layouts(['test/fixtures/*.md']);
+      template.partial('a', 'hello <%= a %>');
+      template.partial('b', 'hello <%= b %>');
 
-  //     var ctx = {a: 'A', b: 'B'};
-  //     var a = template.process('<%= partial("a") %>', ctx);
-  //     var b = template.process('<%= partial("b") %>', ctx);
+      var ctx = {a: 'A', b: 'B'};
+      var a = template.process('<%= partial("a") %>', ctx);
+      var b = template.process('<%= partial("b") %>', ctx);
 
-  //     assert.equal(typeof a, 'string');
-  //     assert.equal(typeof b, 'string');
-  //     assert.equal(typeof template.layout('a'), 'object');
-  //     assert.equal(typeof template.layout('b'), 'object');
+      assert.equal(typeof a, 'string');
+      assert.equal(typeof b, 'string');
+      assert.equal(typeof template.layout('a'), 'object');
+      assert.equal(typeof template.layout('b'), 'object');
 
-  //     a.should.equal('hello A');
-  //     b.should.equal('hello B');
-  //   });
-  // });
+      a.should.equal('hello A');
+      b.should.equal('hello B');
+    });
+  });
 
-  // describe('partials layouts', function () {
-  //   it('should use layouts define when the partial is registered:', function () {
-  //     var template = new Template();
+  describe('partials layouts', function () {
+    it('should use layouts defined when the partial is registered:', function () {
+      var template = new Template();
 
-  //     template.layouts(['test/fixtures/layouts/*.md'], {
-  //       a: {title: 'A', layout: 'b'},
-  //       b: {title: 'B', layout: 'c'},
-  //       c: {title: 'C', layout: 'd'},
-  //       d: {title: 'D', layout: undefined}
-  //     });
+      template.layouts(['test/fixtures/layouts/*.md'], {
+        a: {title: 'A', layout: 'b'},
+        b: {title: 'B', layout: 'c'},
+        c: {title: 'C', layout: 'd'},
+        d: {title: 'D', layout: undefined}
+      });
 
-  //     template.partial('a', 'hello <%= a %>', {layout: 'a'});
-  //     template.partial('b', 'hello <%= b %>', {layout: 'b'});
+      template.partial('a', 'hello <%= a %>', {layout: 'a'});
+      template.partial('b', 'hello <%= b %>', {layout: 'b'});
 
-  //     var ctx = {a: 'A', b: 'B', c: 'C', d: 'D'};
+      var ctx = {a: 'A', b: 'B', c: 'C', d: 'D'};
 
-  //     var a = template.render('a', ctx);
-  //     var b = template.render('b', ctx);
+      var a = template.render('a', ctx);
+      var b = template.render('b', ctx);
 
-  //     template.partial('c', 'hello <%= c %>', {layout: 'a', c: 'CCC'});
-  //     template.partial('d', 'hello <%= d %>', {layout: 'b', d: 'DDD'});
+      template.partial('c', 'hello <%= c %>', {layout: 'a', c: 'CCC'});
+      template.partial('d', 'hello <%= d %>', {layout: 'b', d: 'DDD'});
 
-  //     var c = template.render('c', ctx);
-  //     var d = template.render('d', ctx);
+      var c = template.render('c', ctx);
+      var d = template.render('d', ctx);
 
-  //     c.should.equal('A ABOVE\nhello CCC\nA BELOW');
-  //     d.should.equal('B ABOVE\nhello DDD\nB BELOW');
+      c.should.equal('A ABOVE\nhello CCC\nA BELOW');
+      d.should.equal('B ABOVE\nhello DDD\nB BELOW');
 
-  //     assert.equal(typeof a, 'string');
-  //     assert.equal(typeof b, 'string');
-  //     assert.equal(typeof template.layout('a'), 'object');
-  //     assert.equal(typeof template.layout('b'), 'object');
+      assert.equal(typeof a, 'string');
+      assert.equal(typeof b, 'string');
+      assert.equal(typeof template.layout('a'), 'object');
+      assert.equal(typeof template.layout('b'), 'object');
 
-  //     a.should.equal('A ABOVE\nhello A\nA BELOW');
-  //     b.should.equal('B ABOVE\nhello B\nB BELOW');
-  //   });
-  // });
+      a.should.equal('A ABOVE\nhello A\nA BELOW');
+      b.should.equal('B ABOVE\nhello B\nB BELOW');
+    });
+  });
 });

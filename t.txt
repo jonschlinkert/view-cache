@@ -1,34 +1,0 @@
-
-[0m[0m
-[0m  template layouts[0m
-[0m    .layout():[0m
-    [32m  √[0m[90m should add layouts defined as  strings to `cache.layouts`. [0m
-    [32m  √[0m[90m should get layouts. [0m
-    [32m  √[0m[90m should get layouts using nested object references. [0m
-    [32m  √[0m[90m should add layouts defined as objects to `cache.layouts`. [0m
-[0m    layout locals:[0m
-    [32m  √[0m[90m should move locals to a `data` property. [0m
-[0m    .layouts():[0m
-default
-{{body}}
-default
-This is the <%= title %> page
-{ layout: 'default',
-  title: 'HOME',
-  data: {},
-  content: 'default\n{{body}}\ndefault',
-  original: '\ndefault\n{{body}}\ndefault' }
-    [32m  √[0m[90m should process layouts defined as strings when the `<%= partial() %>` tag is used. [0m
-BEFORE <%= a %> {{body}}
-AFTER <%= a %>
-This is partial <%= a %>
-{ a: 'A',
-  layout: 'b',
-  data: { layout: 'b' },
-  content: 'BEFORE <%= a %> {{body}}\nAFTER <%= a %>',
-  original: '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>' }
-    [31m  1) should stack layouts when the `<%= partial() %>` tag is used.[0m
-
-
-[92m [0m[32m 6 passing[0m[90m (34ms)[0m
-
