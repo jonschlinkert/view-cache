@@ -39,141 +39,172 @@ var _ = require('lodash');
  */
 
 describe('template layouts', function () {
-  // describe('.layout():', function () {
-  //   it('should add layouts defined as  strings to `cache.layouts`.', function () {
-  //     var template = new Template();
-  //     template.layout('a', 'This is layout <%= a %>');
-  //     template.layout('b', 'This is layout <%= b %>');
+  describe('.layout():', function () {
+    it('should add layouts defined as  strings to `cache.layouts`.', function () {
+      var template = new Template();
+      template.layout('a', 'This is layout <%= a %>');
+      template.layout('b', 'This is layout <%= b %>');
 
-  //     var cache = Object.keys(template.cache.layouts);
-  //     cache.should.have.length(2);
-  //   });
+      var cache = Object.keys(template.cache.layouts);
+      cache.should.have.length(2);
+    });
 
-  //   it('should get layouts.', function () {
-  //     var template = new Template();
-  //     template.layout('a', 'This is layout <%= a %>', {a: 'b'});
-  //     template.layout('b', 'This is layout <%= b %>', {a: 'd'});
+    it('should get layouts.', function () {
+      var template = new Template();
+      template.layout('a', 'This is layout <%= a %>', {a: 'b'});
+      template.layout('b', 'This is layout <%= b %>', {a: 'd'});
 
-  //     template.get('layouts').a.should.have.property('data');
-  //     template.get('layouts').b.should.have.property('data');
-  //   });
+      template.get('layouts').a.should.have.property('data');
+      template.get('layouts').b.should.have.property('data');
+    });
 
-  //   it('should get layouts using nested object references.', function () {
-  //     var template = new Template();
-  //     template.layout('a', 'This is layout <%= a %>', {a: 'b'});
-  //     template.layout('b', 'This is layout <%= b %>', {a: 'd'});
+    it('should get layouts using nested object references.', function () {
+      var template = new Template();
+      template.layout('a', 'This is layout <%= a %>', {a: 'b'});
+      template.layout('b', 'This is layout <%= b %>', {a: 'd'});
 
-  //     template.get('layouts.a').should.have.property('data');
-  //     template.get('layouts.b').should.have.property('data');
-  //   });
+      template.get('layouts.a').should.have.property('data');
+      template.get('layouts.b').should.have.property('data');
+    });
 
-  //   it('should add layouts defined as objects to `cache.layouts`.', function () {
-  //     var template = new Template();
-  //     template.layout('a', 'This is layout <%= a %>', {a: 'b'});
-  //     template.layout('b', 'This is layout <%= b %>', {a: 'd'});
+    it('should add layouts defined as objects to `cache.layouts`.', function () {
+      var template = new Template();
+      template.layout('a', 'This is layout <%= a %>', {a: 'b'});
+      template.layout('b', 'This is layout <%= b %>', {a: 'd'});
 
-  //     var layouts = template.cache.layouts;
-  //     layouts.should.have.property('a');
-  //     layouts.should.have.property('b');
-  //     Object.keys(layouts).should.have.length(2);
-  //   });
-  // });
-  // xdescribe('layout locals:', function () {
-  //   it('should move locals to a `data` property.', function () {
-  //     var template = new Template();
-  //     template.layout('a', 'This is layout <%= a %>', {a: 'b'});
-  //     template.layout('b', 'This is layout <%= b %>', {a: 'd'});
+      var layouts = template.cache.layouts;
+      layouts.should.have.property('a');
+      layouts.should.have.property('b');
+      Object.keys(layouts).should.have.length(2);
+    });
 
-  //     template.get('layouts.a').should.have.property('data');
-  //     template.get('layouts.b').should.have.property('data');
-  //   });
-  // });
+    it('when template are defined as objects:', function () {
+      var template = new Template();
+      template.layout('last', 'last!\n{{body}}\nlast!');
+      template.layout('a', 'A above\n{{body}}\nA below', {layout: 'b'});
+      template.layout('b', 'B above\n{{body}}\nB below', {layout: 'c'});
+      template.layout('c', 'C above\n{{body}}\nC below', {layout: 'last'});
+
+      var ctx = {
+        title: 'Page!',
+        layout: 'a'
+      };
+
+      var actual = template.process('I\'m a <%= title %>', ctx);
+      var expected = [
+        'last!',
+        'C above',
+        'B above',
+        'A above',
+        'I\'m a Page!',
+        'A below',
+        'B below',
+        'C below',
+        'last!'
+      ].join('\n');
+      actual.should.eql(expected);
+    });
+  });
+  describe('layout locals:', function () {
+    it('should move locals to a `data` property.', function () {
+      var template = new Template();
+      template.layout('a', 'This is layout <%= a %>', {a: 'b'});
+      template.layout('b', 'This is layout <%= b %>', {a: 'd'});
+
+      template.get('layouts.a').should.have.property('data');
+      template.get('layouts.b').should.have.property('data');
+    });
+  });
 
   describe('.layouts():', function () {
-    // it('should process layouts defined as strings when the `<%= partial() %>` tag is used.', function () {
-    //   var template = new Template();
-    //   template.layout('default', '\ndefault\n{{body}}\ndefault');
-    //   template.layout('mini', '\nmini\n{{body}}\nmini');
-    //   template.page('home', 'This is the <%= title %> page', {layout: 'default', title: 'HOME'});
-    //   template.partial('a', 'This is partial <%= a %>', {layout: 'mini', a: 'A'});
+    it('should process layouts defined as strings when the `<%= partial() %>` tag is used.', function () {
+      var template = new Template();
+      template.layout('default', '\ndefault\n{{body}}\ndefault');
+      template.layout('mini', '\nmini\n{{body}}\nmini');
+      template.page('home', 'This is the <%= title %> page', {layout: 'default', title: 'HOME'});
+      template.partial('a', 'This is partial <%= a %>', {layout: 'mini', a: 'A'});
 
-    //   var actual = template.render('home');
-    //   actual.should.eql('default\nThis is the HOME page\ndefault');
-    // });
+      var actual = template.render('home');
+      actual.should.eql('default\nThis is the HOME page\ndefault');
+    });
 
-    // it('should stack layouts when the `<%= partial() %>` tag is used.', function () {
-    //   var template = new Template();
-    //   template.layout('last', '\nlast\n{{body}}\nlast');
-    //   template.layout('b', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'last'});
-    //   template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
+    it('should stack layouts when the `<%= partial() %>` tag is used.', function () {
+      var template = new Template();
 
-    //   template.partial('a', 'This is partial <%= a %>', {layout: 'a', a: 'A'});
+      template.layout('last', '\nlast\n{{body}}\nlast');
+      template.layout('b', '\nBEFORE <%= title %> {{body}}\nAFTER <%= title %>', {
+        title: 'BBB',
+        layout: 'last',
+      });
+      template.layout('a', '\nBEFORE <%= title %> {{body}}\nAFTER <%= title %>', {
+        title: 'AAA',
+        layout: 'b'
+      });
 
-    //   var actual = template.process('\n<%= partial("a") %>', {a: 'A'})
-    //   actual.should.eql('\nBEFORE A \nlast\n\nThis is partial A\nlast\nAFTER A');
-    // });
+      template.partial('a', 'This is partial <%= a %>', {layout: 'a', a: 'A'});
 
-    // xit('should stack layouts when the `<%= partial() %>` tag is used.', function () {
-    //   var template = new Template();
-    //   template.layout('last', '\nlast\n{{body}}\nlast', {layout: 'a'});
-    //   template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'last'});
+      var actual = template.process('\n<%= partial("a") %>', {a: 'A'})
+      actual.should.eql('\nBEFORE A \nlast\n\nThis is partial A\nlast\nAFTER A');
+    });
 
-    //   template.partial('a', 'This is partial <%= a %>');
+    xit('should stack layouts when the `<%= partial() %>` tag is used.', function () {
+      var template = new Template();
+      template.layout('last', '\nlast\n{{body}}\nlast', {layout: 'a'});
+      template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'last'});
 
-    //   var actual = template.process('\n<%= partial("a") %>', {layout: 'a', a: 'A'})
-    //   actual.should.eql('\nBEFORE A \nlast\n\nThis is partial A\nlast\nAFTER A');
-    // });
+      template.partial('a', 'This is partial <%= a %>');
 
-    // xit('should register a partial as a layout..', function () {
-    //   var template = new Template();
-    //   template.layout('last', '\nlast\n{{body}}\nlast', {layout: 'a'});
-    //   template.partial('foo', 'This is partial <%= a %>\n{{body}}');
+      var actual = template.process('\n<%= partial("a") %>', {layout: 'a', a: 'A'})
+      actual.should.eql('\nBEFORE A \nlast\n\nThis is partial A\nlast\nAFTER A');
+    });
 
-    //   template.layout('a', template.partial('foo'), {layout: 'b'});
-    //   template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>');
+    it('should assign a layout to a partial in locals on a method.', function () {
+      var template = new Template();
 
+      template.partial('a', 'This is partial <%= title %>\n{{body}}', {title: 'AAA'});
+      template.layout('one', '\nBEFORE <%= title %> {{body}}\nAFTER <%= title %>', {layout: 'last', title: 'LAYOUT ONE'});
+      template.layout('last', '\nlast\n{{body}}\nlast');
 
-    //   var actual = template.process('\n<%= partial("a") %>', {layout: 'last', a: 'A', b: 'B'})
-    //   actual.should.eql('\nBEFORE B This is partial A\n\nlast\n\n\nlast\nAFTER B');
-    // });
+      var actual = template.process('\n<%= partial("a") %>', {layout: 'one', a: 'A', b: 'B'})
+      actual.should.eql('last\nBEFORE LAYOUT ONE This is partial AAA\n{{body}}\nAFTER LAYOUT ONE\nlast');
+    });
 
+    xit('should process complex nested layouts when the `<%= partial() %>` tag is used.', function () {
+      var template = new Template();
 
-    // xit('should process complex nested layouts when the `<%= partial() %>` tag is used.', function () {
-    //   var template = new Template();
+      template.layout('last', '\nlast\n{{body}}\nlast');
+      template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
+      template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
+      template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'last'});
 
-    //   template.layout('last', '\nlast\n{{body}}\nlast');
-    //   template.layout('a', '\nBEFORE <%= a %> {{body}}\nAFTER <%= a %>', {layout: 'b'});
-    //   template.layout('b', '\nBEFORE <%= b %> {{body}}\nAFTER <%= b %>', {layout: 'c'});
-    //   template.layout('c', '\nBEFORE <%= c %> {{body}}\nAFTER <%= c %>', {layout: 'last'});
+      var ctx = {
+        a: 'FIRST',
+        b: 'SECOND',
+        c: 'THIRD',
+        d: 'FOURTH',
+        layout: 'a'
+      };
 
-    //   var ctx = {
-    //     a: 'FIRST',
-    //     b: 'SECOND',
-    //     c: 'THIRD',
-    //     d: 'FOURTH',
-    //     layout: 'a'
-    //   };
+      template.partial('a', 'This is partial <%= a %>');
+      template.partial('b', 'This is partial <%= b %>');
+      template.partials({
+        c: 'This is partial <%= c %>',
+        d: 'This is partial <%= d %>'
+      });
 
-    //   template.partial('a', 'This is partial <%= a %>');
-    //   template.partial('b', 'This is partial <%= b %>');
-    //   template.partials({
-    //     c: 'This is partial <%= c %>',
-    //     d: 'This is partial <%= d %>'
-    //   });
+      var a = template.process('<%= partial("a") %>', ctx);
+      var b = template.process('<%= partial("b") %>', ctx);
+      var c = template.process('<%= partial("c") %>', ctx);
+      var d = template.process('<%= partial("d") %>', ctx);
 
-    //   var a = template.process('<%= partial("a") %>', ctx);
-    //   var b = template.process('<%= partial("b") %>', ctx);
-    //   var c = template.process('<%= partial("c") %>', ctx);
-    //   var d = template.process('<%= partial("d") %>', ctx);
-
-    //   a.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FIRST\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
-    //   b.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial SECOND\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
-    //   c.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial THIRD\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
-    //   d.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FOURTH\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
-    // });
+      a.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FIRST\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+      b.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial SECOND\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+      c.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial THIRD\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+      d.should.equal('\nlast\n\nBEFORE THIRD \nBEFORE SECOND \nBEFORE FIRST This is partial FOURTH\nAFTER FIRST\nAFTER SECOND\nAFTER THIRD\nlast');
+    });
 
     it('should prefer layouts defined on the locals over a default layout.', function () {
-      var template = new Template({locals: {layout: 'GLOBAL'}});
+      var template = new Template({locals: {a: '_A_', b: '_B_', c: '_C_', d: '_D_'}});
 
       template.layout('GLOBAL', '\nGLOBAL\n{{body}}\nGLOBAL');
       template.layout('last', '\nlast\n{{body}}\nlast');
@@ -191,10 +222,12 @@ describe('template layouts', function () {
       var c = template.process('<%= partial("c") %>', {title: 'Local CC'});
       var d = template.process('<%= partial("d") %>', {title: 'Local DD'});
 
-      a.should.equal('This is partial AA');
-      b.should.equal('This is partial BB');
-      c.should.equal('This is partial CC');
-      d.should.equal('This is partial DD');
+      a.should.equal('last\nBEFORE _C_ BEFORE _B_ BEFORE _A_ This is partial _A_\nAFTER _A_\nAFTER _B_\nAFTER _C_\nlast');
+      b.should.equal('last\nBEFORE _C_ BEFORE _B_ This is partial _B_\nAFTER _B_\nAFTER _C_\nlast');
+      c.should.equal('last\nBEFORE _C_ This is partial _C_\nAFTER _C_\nlast');
+
+      // No layout is defined for D
+      d.should.equal('This is partial _D_');
     });
 
     xit('should use a global layout if no other layout is defined.', function () {

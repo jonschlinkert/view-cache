@@ -14,71 +14,6 @@ var _ = require('lodash');
 
 
 describe('template partials', function () {
-
-  describe('.partial():', function () {
-    var template = new Template();
-    it('should add a partial to `cache.partials`.', function () {
-      template.partial('a', 'This is partial <%= a %>');
-      template.partial('b', 'This is partial <%= b %>');
-      var cache = Object.keys(template.cache.partials);
-      cache.should.have.length(2);
-    });
-
-    it('should get partials from the cache', function () {
-      var a = template.partial('a');
-      var b = template.partial('b');
-
-      assert.equal(typeof a, 'object');
-      assert.equal(typeof b, 'object');
-    });
-
-    it('should extend locals onto the cache.', function () {
-      var template = new Template();
-      template.partial('a', 'This is partial <%= a %>', {a: 'AAA'});
-      template.partial('b', 'This is partial <%= b %>', {b: 'BBB'});
-
-      template.partial('a').data.should.eql({a: 'AAA'});
-      template.partial('b').data.should.eql({b: 'BBB'});
-    });
-  });
-
-  describe('.get():', function () {
-    var template = new Template();
-
-    it('should get a partial from the cache', function () {
-      template.partial('a', 'This is partial <%= a %>', {layout: 'a'});
-      template.get('partials').should.have.property('a');
-      template.get('partials.a').should.be.an.object;
-    });
-
-    it('should have a `data` property.', function () {
-      template.partial('a', 'This is partial <%= a %>', {layout: 'a'});
-      template.get('partials.a').should.have.property('data');
-    });
-
-    it('should have a `layout` propert on the `data` property.', function () {
-      template.partial('a', 'This is partial <%= a %>', {layout: 'a'});
-      template.get('partials.a.data').should.have.property('layout');
-    });
-
-    it('should move all data to `data` property.', function () {
-      template.partial('a', 'This is partial <%= a %>', {layout: 'a', a: 'a', b: 'b'});
-      template.get('partials.a.data').should.have.property('layout');
-      template.get('partials.a.data').should.have.property('a');
-      template.get('partials.a.data').should.have.property('b');
-    });
-
-    it('should have a `content` property.', function () {
-      template.partial('a', 'This is partial <%= a %>', {layout: 'a'});
-      template.get('partials.a').should.have.property('content');
-    });
-
-    it('should have an `original` property.', function () {
-      template.partial('a', 'This is partial <%= a %>', {layout: 'a'});
-      template.get('partials.a').should.have.property('original');
-    });
-  });
-
   describe('.partials():', function () {
     var template = new Template();
 
@@ -95,6 +30,20 @@ describe('template partials', function () {
 
       assert.equal(typeof a, 'object');
       assert.equal(typeof b, 'object');
+    });
+  });
+
+  describe('nested partials:', function () {
+    it('should recursively process nested partial templates.', function () {
+      var template = new Template();
+
+      template.partial('a', '<%= title %>\n<%= partial("b") %>', {title: 'AAA'});
+      template.partial('b', '<%= title %>\n<%= partial("c") %>', {title: 'BBB'});
+      template.partial('c', '<%= title %>\n<%= partial("d") %>', {title: 'CCC'});
+      template.partial('d', '<%= title %>', {title: 'LAST!'});
+
+      var actual = template.process('\n<%= partial("a") %>');
+      actual.should.eql('AAA\nBBB\nCCC\nLAST!');
     });
   });
 

@@ -51,6 +51,7 @@ function Template(options) {
   Cache.call(this, options);
   var opts = options || {};
   this.extend(opts);
+  this.data(opts);
   this.defaultConfig(opts);
 }
 
@@ -74,10 +75,11 @@ Template.prototype.defaultConfig = function(opts) {
   this.option('bindHelpers', true);
 
   this.set('templates', opts.templates || {});
-  this.set('partials', opts.partials || {});
   this.set('layouts', opts.layouts || {});
+  this.set('partials', opts.partials || {});
   this.set('pages', opts.pages || {});
 
+  this.set('imports', opts.imports || {});
   this.set('helpers', opts.helpers || {});
   this.set('parsers', opts.parsers || {});
   this.set('locals', opts.locals || {});
@@ -264,7 +266,9 @@ Template.prototype.load = function (patterns, options) {
         o[name] = require(path.resolve(filepath));
       }
     } else {
-      o[name] = this.parse(str);
+      if (!o.parsed) {
+        o[name] = this.parse(str);
+      }
       if (locals[name]) {
         o[name].data = _.extend({}, locals[name], o[name].data);
       } else {
@@ -287,11 +291,23 @@ Template.prototype.load = function (patterns, options) {
  */
 
 Template.prototype.normalize = function (key, str, locals) {
-  var obj = {};
-  obj[key] = this.parse(str);
-  obj[key].data = _.extend({}, locals, obj[key].data);
-  obj[key].layout = obj[key].data.layout;
-  delete obj[key].data.layout;
+  var ctx = _.extend({}, locals);
+  var obj = {}, o = {};
+  o = {};
+
+  if (ctx[key]) {
+    o.data = ctx[key];
+  }
+  if (!ctx.parsed) {
+    o = this.parse(str);
+  }
+
+  o.data = _.extend({}, ctx, o.data);
+  o.layout = o.data.layout;
+  delete o.data.layout;
+  obj[key] = o;
+
+  this.set('imports.' + key, obj.data);
   return obj;
 };
 
@@ -407,6 +423,7 @@ Template.prototype.layout = function (key, str, locals) {
     return this.cache.layouts[key];
   }
   debug('registering layouts %s:', chalk.magenta(key));
+
   var obj = this.normalize(key, str, locals);
   this.extend('layouts', obj);
   this.addLayout(obj);
@@ -530,7 +547,6 @@ Template.prototype.addHelpers = function (pattern, options) {
 Template.prototype._defaultHelpers = function () {
   this.addHelper('partial', function (name, locals) {
     debug('%s [loading] partial %s:', green('helper'), bold(name));
-
     var tmpl = this.cache.partials[name];
 
     if (tmpl) {
@@ -559,10 +575,17 @@ Template.prototype._defaultHelpers = function () {
  * @api public
  */
 
-Template.prototype.parse = function (str, ops) {
-  if (str) {
-    var file = matter(str, _.extend({autodetect: true}, ops));
+Template.prototype.parse = function (str, options, parsed) {
+  if (str && !(options && options.parsed)) {
+    // debug('[parse]: %s', bold(str.substring(0, 150)));
+
+    var file = matter(str, _.defaults({
+      autodetect: true
+    }, options));
+
     file.content = file.content.replace(/^\s*/, '');
+    file.parsed = true;
+
     return file;
   }
   return str;
@@ -639,28 +662,6 @@ Template.prototype._parse = function (filepath, options) {
 
 
 /**
- * ## .compile
- *
- * Compile a template string.
- *
- * **Example:**
- *
- * ```js
- * template.compile('<%= foo %>');
- * ```
- *
- * @param  {String} `str` The actual template string.
- * @param  {String} `settings` Delimiters to pass to Lo-dash.
- * @return {String}
- * @api public
- */
-
-Template.prototype.compile = function (str, settings) {
-  return this.process(str, null, settings);
-};
-
-
-/**
  * ## .compileFile
  *
  * Compile a template from a filepath.
@@ -700,8 +701,26 @@ Template.prototype.renderFile = function (filepath, locals, settings) {
 
 
 /**
- * ## .render
+ * Compile a template string.
  *
+ * **Example:**
+ *
+ * ```js
+ * template.compile('<%= foo %>');
+ * ```
+ *
+ * @param  {String} `str` The actual template string.
+ * @param  {String} `settings` Delimiters to pass to Lo-dash.
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.compile = function (str, settings) {
+  return this.process(str, null, settings);
+};
+
+
+/**
  * Render a template `str` with the given
  * `locals` and `settings`.
  *
@@ -719,8 +738,6 @@ Template.prototype.render = function (name, locals, settings) {
 
 
 /**
- * ## .process
- *
  * Process a template `str` with the given
  * `locals` and `settings`.
  *
@@ -732,6 +749,10 @@ Template.prototype.render = function (name, locals, settings) {
  */
 
 Template.prototype.process = function (str, locals, settings) {
+  if (typeof str !== 'string') {
+    throw new Error('Template#process() expects a string.');
+  }
+
   debug('[rendering] template: %s', bold(str.substring(0, 150)));
   settings = _.extend({}, settings);
   locals = _.extend({}, locals);
@@ -742,7 +763,9 @@ Template.prototype.process = function (str, locals, settings) {
   var ctx = {};
 
   _.extend(ctx, this.cache.locals);
+  _.extend(ctx, this.cache.data);
   _.extend(ctx, locals);
+  _.extend(ctx, this.get('imports'));
   _.extend(ctx, tmpl.data);
   _.extend(this.cache.locals, ctx);
 
@@ -756,6 +779,7 @@ Template.prototype.process = function (str, locals, settings) {
 
   _.extend(ctx, layout.data);
   str = layout.content || tmpl.content;
+
 
   // Extend helpers onto settings
   settings = _.extend(settings, delims, {

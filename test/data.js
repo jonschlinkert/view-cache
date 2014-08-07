@@ -14,18 +14,42 @@ var _ = require('lodash');
 
 describe('template data', function () {
   describe('.data():', function () {
-    var template = new Template();
-    template.partial('a', 'This is partial <%= a %>');
-    template.partial('b', 'This is partial <%= b %>');
-
-    it('should add a partial to `cache.partials`.', function () {
-      var cache = Object.keys(template.cache.partials);
-      cache.should.have.length(2);
-    });
 
     it('should extend the `context` with data.', function () {
+      var template = new Template();
       template.data({a: 'A', b: 'B'});
 
+      var data = template.cache.data;
+
+      data.should.have.property('a');
+      data.a.should.equal('A');
+    });
+
+    it('should be chainable.', function () {
+      var template = new Template();
+      template
+        .data({a: 'A', b: 'B'})
+        .data({c: 'C', d: 'D'});
+
+      var data = template.cache.data;
+
+      data.should.have.property('a');
+      data.should.have.property('b');
+      data.should.have.property('c');
+      data.should.have.property('d');
+      data.a.should.equal('A');
+      data.b.should.equal('B');
+      data.c.should.equal('C');
+      data.d.should.equal('D');
+    });
+
+    it('should pass data to templates.', function () {
+      var template = new Template();
+      template.data({foo: 'A', bar: 'B'});
+
+      template.partial('a', 'This is partial <%= foo %>');
+      template.partial('b', 'This is partial <%= bar %>');
+
       var a = template.process('<%= partial("a") %>');
       var b = template.process('<%= partial("b") %>');
 
@@ -33,46 +57,60 @@ describe('template data', function () {
       b.should.equal('This is partial B');
     });
 
-    it('should extend the `context` with data.', function () {
-      template.data({a: 'C', b: 'D'});
+    it('should have preference over global data.', function () {
+      var template = new Template({foo: 'GLOBAL', bar: 'GLOBAL'});
+      template.data({bar: 'B'});
+
+      template.partial('a', 'This is partial <%= foo %>');
+      template.partial('b', 'This is partial <%= bar %>');
 
       var a = template.process('<%= partial("a") %>');
       var b = template.process('<%= partial("b") %>');
 
-      a.should.equal('This is partial C');
-      b.should.equal('This is partial D');
-    });
-  });
-
-  describe('.partials():', function () {
-    var template = new Template();
-    template.set('layoutTag', 'blah');
-
-    template.partials({
-      a: 'This is partial <%= a %>',
-      b: 'This is partial <%= b %>',
-      c: 'This is partial <%= c %>',
-      d: 'This is partial <%= d %>'
-    });
-
-    it('should add multiple partials to `cache.partials`.', function () {
-      var cache = Object.keys(template.cache.partials);
-      cache.should.have.length(4);
-    });
-
-    it('should extend the context.', function () {
-      template.data({a: 'A', b: 'B', c: 'C', d: 'D'});
-
-      var a = template.process('<%= partial("a") %>');
-      var b = template.process('<%= partial("b") %>');
-      var c = template.process('<%= partial("c") %>');
-      var d = template.process('<%= partial("d") %>');
-
-      a.should.equal('This is partial A');
+      a.should.equal('This is partial GLOBAL');
       b.should.equal('This is partial B');
-      c.should.equal('This is partial C');
-      d.should.equal('This is partial D');
     });
 
+    it('should NOT have preference over local data.', function () {
+      var template = new Template({foo: 'GLOBAL', bar: 'GLOBAL'});
+      template.data({foo: 'A', bar: 'B'});
+
+      template.partial('a', 'This is partial <%= foo %>', {foo: 'LOCAL A'});
+      template.partial('b', 'This is partial <%= bar %>', {bar: 'LOCAL B'});
+
+      var a = template.process('<%= partial("a") %>');
+      var b = template.process('<%= partial("b") %>');
+
+      a.should.equal('This is partial LOCAL A');
+      b.should.equal('This is partial LOCAL B');
+    });
+
+    it('should NOT have preference over template data.', function () {
+      var template = new Template({foo: 'GLOBAL', bar: 'GLOBAL'});
+      template.data({foo: 'A', bar: 'B'});
+
+      template.partial('a', 'This is partial <%= foo %>');
+      template.partial('b', 'This is partial <%= bar %>');
+
+      var a = template.process('<%= partial("a", {foo: "LOCAL A"}) %>');
+      var b = template.process('<%= partial("b", {bar: "LOCAL B"}) %>');
+
+      a.should.equal('This is partial LOCAL A');
+      b.should.equal('This is partial LOCAL B');
+    });
+
+    it('should NOT have preference over front matter.', function () {
+      var template = new Template({foo: 'GLOBAL', bar: 'GLOBAL'});
+      template.data({foo: 'A', bar: 'B'});
+
+      template.partial('a', '---\nfoo: MATTER A\n---\nThis is partial <%= foo %>');
+      template.partial('b', '---\nbar: MATTER B\n---\nThis is partial <%= bar %>');
+
+      var a = template.process('<%= partial("a") %>');
+      var b = template.process('<%= partial("b") %>');
+
+      a.should.equal('This is partial MATTER A');
+      b.should.equal('This is partial MATTER B');
+    });
   });
 });
