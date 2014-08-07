@@ -15,17 +15,14 @@ var chalk = require('chalk');
 var glob = require('globby');
 var arrayify = require('arrayify-compact');
 var matter = require('gray-matter');
-var debug = require('debug')('template');
+var debug = require('debug')('view-cache');
 var Layouts = require('layouts');
 var Cache = require('config-cache');
 var Delimiters = require('delims');
 var delimiters = new Delimiters();
 
-var yellow = chalk.yellow;
 var green = chalk.green;
 var bold = chalk.bold;
-var gray = chalk.gray;
-var cyan = chalk.cyan;
 
 
 /**
@@ -65,7 +62,7 @@ util.inherits(Template, Cache);
  */
 
 Template.prototype.defaultConfig = function(opts) {
-  var cache = this.cache;
+  this.context = {};
 
   this.option('cwd', opts.cwd || process.cwd());
   this.option('layout', opts.layout);
@@ -238,6 +235,110 @@ Template.prototype.assertDelims = function (str, re) {
 
 
 /**
+ * ## .parse
+ *
+ * Parse a string and extract yaml front matter.
+ *
+ * **Example:**
+ *
+ * ```js
+ * template.parse('---\ntitle: Home\n---\n<%= title %>');
+ * //=> {data: {title: "Home"}, content: "<%= title %>"}}
+ * ```
+ *
+ * @param  {String} `str` The string to parse.
+ * @param  {String} `Options` options to pass to [gray-matter].
+ * @return {String}
+ * @api public
+ */
+
+Template.prototype.parse = function (str, options) {
+  if (str && !(options && options.parsed)) {
+    debug('[parse]: %s', bold(str.substring(0, 150)));
+
+    var file = matter(str, _.defaults({
+      autodetect: true
+    }, options));
+
+    file.content = file.content.replace(/^\s*/, '');
+    file.parsed = true;
+
+    return file;
+  }
+  return str;
+};
+
+
+/**
+ * ## .parser
+ *
+ * Register a parser `fn` to be used on each `.src` file. This is used to parse
+ * front matter, but can be used for any kind of parsing.
+ *
+ * @param {String} `name` Optional name of the parser, for debugging.
+ * @param {Object} `options` Options to pass to parser.
+ * @param {Function} `fn` The parsing function.
+ * @return {Template} for chaining
+ * @api public
+ */
+
+Template.prototype.addParser = function (ext, stage, fn) {
+  if (ext[0] === '.') {
+    ext = ext.replace(/^\./, '');
+  }
+  if (typeof stage === 'function') {
+    fn = stage;
+    stage = 'before';
+  }
+
+  var parsers = this.cache.parsers[ext] || [];
+  fn = arrayify(fn).map(function(parser) {
+    if (typeof parser !== 'function') {
+      throw new TypeError('Template.parser() exception:', ext);
+    }
+    return parser;
+  }.bind(this));
+
+  this.cache.parsers[ext] = _.union([], parsers, fn);
+  return this;
+};
+
+
+/**
+ * ## .parse
+ *
+ * Traverse the `parser` stack, passing the `file` object to each
+ * parser and returning the accumlated result.
+ *
+ * @param  {Object} `options`
+ * @api private
+ */
+
+Template.prototype._parse = function (filepath, options) {
+  var opts = _.extend({}, options);
+  var ext = opts.ext || path.extname(filepath);
+
+  if (ext[0] === '.') {
+    ext = ext.replace(/^\./, '');
+  }
+  var parsers = this.cache.parsers[ext];
+  if (ext === '.*') {
+    parsers = [this.defaultParser];
+  }
+
+  // if (parsers && parsers.length) {
+  //   parsers.forEach(function (parser) {
+  //     try {
+  //       file = parser(str, options);
+  //     } catch (err) {
+  //       throw new Error('Template._parse() parsing error:', err));
+  //     }
+  //   });
+  // }
+};
+
+
+/**
  * ## .load
  *
  * Read a glob of files, parse them and return objects.
@@ -276,6 +377,8 @@ Template.prototype.load = function (patterns, options) {
       }
     }
   }.bind(this));
+
+  this.data(o);
   return o;
 };
 
@@ -290,25 +393,29 @@ Template.prototype.load = function (patterns, options) {
  * @api public
  */
 
-Template.prototype.normalize = function (key, str, locals) {
+Template.prototype.normalize = function (name, str, locals) {
   var ctx = _.extend({}, locals);
-  var obj = {}, o = {};
-  o = {};
+  var o = {};
 
-  if (ctx[key]) {
-    o.data = ctx[key];
-  }
+  o[name] = {};
+  o[name].data = {};
+
   if (!ctx.parsed) {
-    o = this.parse(str);
+    var parsed = this.parse(str);
+    o[name] = _.extend(o[name], parsed);
   }
 
-  o.data = _.extend({}, ctx, o.data);
-  o.layout = o.data.layout;
-  delete o.data.layout;
-  obj[key] = o;
+  if (ctx[name]) {
+    o[name].data = ctx[name];
+  }
 
-  this.set('imports.' + key, obj.data);
-  return obj;
+  o[name].data = _.extend({}, o[name].data, ctx);
+
+  o[name].layout = o[name].data.layout;
+  delete o[name].data.layout;
+
+  this.data(o);
+  return o;
 };
 
 
@@ -329,7 +436,8 @@ Template.prototype.partial = function (key, str, locals) {
     return this.cache.partials[key];
   }
   debug('registering partials %s:', chalk.magenta(key));
-  this.extend('partials', this.normalize(key, str, locals));
+  var partials = this.normalize(key, str, locals);
+  this.extend('partials', partials);
   return this;
 };
 
@@ -423,10 +531,9 @@ Template.prototype.layout = function (key, str, locals) {
     return this.cache.layouts[key];
   }
   debug('registering layouts %s:', chalk.magenta(key));
-
-  var obj = this.normalize(key, str, locals);
-  this.extend('layouts', obj);
-  this.addLayout(obj);
+  var layouts = this.normalize(key, str, locals);
+  this.extend('layouts', layouts);
+  this.addLayout(layouts);
   return this;
 };
 
@@ -444,9 +551,9 @@ Template.prototype.layout = function (key, str, locals) {
 
 Template.prototype.layouts = function (glob, locals) {
   debug('registering layouts %s:', chalk.magenta(glob));
-  var obj = this.load(glob, locals);
-  this.extend('layouts', obj);
-  this.addLayout(obj);
+  var layout = this.load(glob, locals);
+  this.extend('layouts', layout);
+  this.addLayout(layout);
   return this;
 };
 
@@ -529,7 +636,6 @@ Template.prototype.addHelper = function (key, value) {
 
 Template.prototype.addHelpers = function (pattern, options) {
   debug('registering helpers %s:', chalk.magenta(pattern));
-
   var opts = _.extend({requireable: true}, options);
   this.extend('helpers', this.load(pattern, opts));
   return this;
@@ -544,120 +650,11 @@ Template.prototype.addHelpers = function (pattern, options) {
  * @api private
  */
 
-Template.prototype._defaultHelpers = function () {
+Template.prototype._defaultHelpers = function (options) {
   this.addHelper('partial', function (name, locals) {
     debug('%s [loading] partial %s:', green('helper'), bold(name));
-    var tmpl = this.cache.partials[name];
-
-    if (tmpl) {
-      var ctx = _.extend({layout: tmpl.layout}, tmpl.data, locals);
-      return this.process(tmpl.content, ctx);
-    }
-  }.bind(this));
-};
-
-
-/**
- * ## .parse
- *
- * Parse a string and extract yaml front matter.
- *
- * **Example:**
- *
- * ```js
- * template.parse('---\ntitle: Home\n---\n<%= title %>');
- * //=> {data: {title: "Home"}, content: "<%= title %>"}}
- * ```
- *
- * @param  {String} `str` The string to parse.
- * @param  {String} `Options` options to pass to [gray-matter].
- * @return {String}
- * @api public
- */
-
-Template.prototype.parse = function (str, options, parsed) {
-  if (str && !(options && options.parsed)) {
-    // debug('[parse]: %s', bold(str.substring(0, 150)));
-
-    var file = matter(str, _.defaults({
-      autodetect: true
-    }, options));
-
-    file.content = file.content.replace(/^\s*/, '');
-    file.parsed = true;
-
-    return file;
-  }
-  return str;
-};
-
-
-/**
- * ## .parser
- *
- * Register a parser `fn` to be used on each `.src` file. This is used to parse
- * front matter, but can be used for any kind of parsing.
- *
- * @param {String} `name` Optional name of the parser, for debugging.
- * @param {Object} `options` Options to pass to parser.
- * @param {Function} `fn` The parsing function.
- * @return {Template} for chaining
- * @api public
- */
-
-Template.prototype.addParser = function (ext, stage, fn) {
-  if (ext[0] === '.') {
-    ext = ext.replace(/^\./, '');
-  }
-  if (typeof stage === 'function') {
-    fn = stage;
-    stage = 'before';
-  }
-
-  var parsers = this.cache.parsers[ext] || [];
-  fn = arrayify(fn).map(function(parser) {
-    if (typeof parser !== 'function') {
-      throw new TypeError('Template.parser() exception:', ext);
-    }
-    return parser;
-  }.bind(this));
-
-  this.cache.parsers[ext] = _.union([], parsers, fn);
-  return this;
-};
-
-
-/**
- * ## .parse
- *
- * Traverse the `parser` stack, passing the `file` object to each
- * parser and returning the accumlated result.
- *
- * @param  {Object} `options`
- * @api private
- */
-
-Template.prototype._parse = function (filepath, options) {
-  var opts = _.extend({}, options);
-  var ext = opts.ext || path.extname(filepath);
-
-  if (ext[0] === '.') {
-    ext = ext.replace(/^\./, '');
-  }
-  var parsers = this.cache.parsers[ext];
-  if (ext === '.*') {
-    parsers = [this.defaultParser];
-  }
-
-  // if (parsers && parsers.length) {
-  //   parsers.forEach(function (parser) {
-  //     try {
-  //       file = parser(str, options);
-  //     } catch (err) {
-  //       throw new Error('Template._parse() parsing error:', err));
-  //     }
-  //   });
-  // }
+    return this.render(name, locals);
+  });
 };
 
 
@@ -732,7 +729,7 @@ Template.prototype.compile = function (str, settings) {
 
 Template.prototype.render = function (name, locals, settings) {
   var tmpl = this.cache.pages[name] || this.cache.partials[name];
-  var ctx = _.extend({}, locals, tmpl.data);
+  var ctx = _.defaults({layout: tmpl.layout}, tmpl.data, locals);
   return this.process(tmpl.content, ctx, settings);
 };
 
@@ -749,25 +746,13 @@ Template.prototype.render = function (name, locals, settings) {
  */
 
 Template.prototype.process = function (str, locals, settings) {
-  if (typeof str !== 'string') {
-    throw new Error('Template#process() expects a string as the first param.');
-  }
-
-  debug('[rendering] template: %s', bold(str.substring(0, 150)));
   settings = _.extend({}, settings);
-  locals = _.extend({}, locals);
+  var original = str;
+
   this.lazyLayouts();
 
-  var original = str;
   var tmpl = this.parse(str);
-  var ctx = {};
-
-  _.extend(ctx, this.cache.locals);
-  _.extend(ctx, this.cache.data);
-  _.extend(ctx, locals);
-  _.extend(ctx, this.get('imports'));
-  _.extend(ctx, tmpl.data);
-  _.extend(this.cache.locals, ctx);
+  var ctx = this._context(locals, tmpl.data);
 
   var delims = this.getDelims(settings.delims || ctx.delims);
   var layout = ctx.layout;
@@ -780,16 +765,10 @@ Template.prototype.process = function (str, locals, settings) {
   _.extend(ctx, layout.data);
   str = layout.content || tmpl.content;
 
-
   // Extend helpers onto settings
   settings = _.extend(settings, delims, {
     imports: this.cache.helpers
   });
-
-  // If no context is passed, return a compiled fn
-  if (!Object.keys(ctx).length) {
-    return _.template(str, null, settings);
-  }
 
   // Otherwise, recursively render templates and
   // return a template string.
@@ -799,9 +778,35 @@ Template.prototype.process = function (str, locals, settings) {
       break;
     }
   }
-  delete this.cache.locals.layout;
   return str;
 };
+
+
+/**
+ * Process the context.
+ *
+ * @param  {Object} locals
+ * @param  {Object} matter
+ * @return {Object}
+ */
+
+Template.prototype._context = function (locals, matter) {
+  var globals = {};
+  locals = locals || {};
+  matter = matter || {};
+
+  if (this.cache.data.hasOwnProperty('locals')) {
+    globals = this.cache.data.locals;
+  }
+
+  if (this.cache.hasOwnProperty('locals')) {
+    globals = _.extend({}, globals, this.cache.locals);
+  }
+
+  var ctx = _.defaults({}, matter, locals, globals);
+  return _.cloneDeep(ctx);
+};
+
 
 
 /**
