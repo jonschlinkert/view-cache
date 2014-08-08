@@ -8,8 +8,8 @@
 'use strict';
 
 var should = require('should');
-var template = require('..');
-var template = new template();
+var Template = require('..');
+var template = new Template();
 
 describe('template data', function() {
   beforeEach(function() {

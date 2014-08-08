@@ -13,15 +13,14 @@ var _ = require('lodash');
 
 var engine = {};
 
-engine.render = function noopRender(str, options, settings) {
+engine.render = function lodashRender(str, options) {
   options = options || {};
 
   try {
-    settings = settings || options.settings || {};
+    var settings = options.settings || {};
     delete options.settings;
 
     settings.imports = settings.imports || settings.helpers;
-
     return _.template(str, options, settings);
   } catch (err) {
     return err;

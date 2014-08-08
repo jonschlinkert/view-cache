@@ -124,7 +124,7 @@ describe('template partials', function () {
         d.should.equal('This is partial ZZZ');
       });
 
-      it('should give context defined in the template params preference over partial-locals.', function () {
+      it('should give helper locals preference over method locals.', function () {
         var template = new Template({locals: {title: 'GLOBAL'}});
 
         template.partial('a', 'This is partial <%= title %>', {title: 'WWW'});
@@ -143,7 +143,7 @@ describe('template partials', function () {
         d.should.equal('This is partial d');
       });
 
-      it('should give front-matter preference over partial-locals.', function () {
+      it('should give front-matter preference over helper locals.', function () {
         var template = new Template({locals: {title: 'GLOBAL'}});
 
         template.partial('a', '---\ntitle: A1\n---\nThis is partial <%= title %>', {title: 'WWW'});
@@ -151,10 +151,10 @@ describe('template partials', function () {
         template.partial('c', '---\ntitle: C1\n---\nThis is partial <%= title %>', {title: 'YYY'});
         template.partial('d', '---\ntitle: D1\n---\nThis is partial <%= title %>', {title: 'ZZZ'});
 
-        var a = template.process('<%= partial("a", {layout: "a"}) %>', {title: 'AA'});
-        var b = template.process('<%= partial("b", {layout: "a"}) %>', {title: 'BB'});
-        var c = template.process('<%= partial("c", {layout: "a"}) %>', {title: 'CC'});
-        var d = template.process('<%= partial("d", {layout: "a"}) %>', {title: 'DD'});
+        var a = template.process('<%= partial("a", {layout: "a"}) %>', {title: 'LAA'});
+        var b = template.process('<%= partial("b", {layout: "a"}) %>', {title: 'LBB'});
+        var c = template.process('<%= partial("c", {layout: "a"}) %>', {title: 'LCC'});
+        var d = template.process('<%= partial("d", {layout: "a"}) %>', {title: 'LDD'});
 
         a.should.equal('This is partial A1');
         b.should.equal('This is partial B1');

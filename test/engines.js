@@ -40,4 +40,22 @@ describe('template engines', function () {
       actual.should.equal('Hi Brian');
     });
   });
+
+  describe('.render():', function () {
+    it('should render handlebars', function () {
+      var template = new Template();
+      template.engine('hbs', engines.handlebars);
+      template.addDelims('hbs', ['{{','}}']);
+      var tmpl = 'Hi {{name}}';
+      var context = {
+        name: 'Brian'
+      };
+      var settings = {
+        ext: '.hbs',
+        delims: 'hbs'
+      };
+      var actual = template.render(tmpl, context, settings);
+      actual.should.equal('Hi Brian');
+    });
+  });
 });
