@@ -421,7 +421,10 @@ Template.prototype.normalize = function (name, str, locals) {
 
 Template.prototype.template = function(type, options) {
   options = options || {};
-  var plural = options.plural || type;
+  var plural = null;
+  if (!(plural = options.plural)) {
+    throw new Error('Expected a `plural` option to be on `options`');
+  }
 
   // add singluar function
   Template.prototype[type] = function (key, str, locals) {

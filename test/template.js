@@ -25,6 +25,14 @@ describe('.template():', function () {
       template.template('beep', {plural: 'beeps'});
       Template.prototype.beeps.should.be.a.function;
     });
+    it('should throw error when plural is not provided', function (done) {
+      try {
+        template.template('beep');
+      } catch (err) {
+        return done();
+      }
+      done('Expected Error');
+    });
   });
 
   describe('.beep()', function () {
