@@ -655,7 +655,7 @@ Template.prototype._defaultHelpers = function (options) {
   var self = this;
 
   /**
-   * Partial helpers
+   * Partial helper
    *
    * @param  {String} `name`
    * @param  {Object} `locals`
