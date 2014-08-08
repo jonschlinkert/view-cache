@@ -419,6 +419,28 @@ Template.prototype.normalize = function (name, str, locals) {
   return o;
 };
 
+Template.prototype.template = function(type, options) {
+  options = options || {};
+  var plural = options.plural || type;
+
+  // add singluar function
+  Template.prototype[type] = function (key, str, locals) {
+    if (arguments.length === 1 && typeof key === 'string') {
+      return this.cache[plural][key];
+    }
+    debug('registering %s %s:', plural, chalk.magenta(key));
+    var items = this.normalize(key, str, locals);
+    this.extend(plural, items);
+    return this;
+  };
+
+  // add plural function
+  Template.prototype[plural] = function (glob, locals) {
+    debug('registering %s %s:', plural, chalk.magenta(glob));
+    this.extend(plural, this.load(glob, locals));
+    return this;
+  };
+};
 
 /**
  * ## .partial
