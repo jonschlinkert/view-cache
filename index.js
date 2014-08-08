@@ -15,6 +15,7 @@ var chalk = require('chalk');
 var glob = require('globby');
 var arrayify = require('arrayify-compact');
 var matter = require('gray-matter');
+var remarked = require('remarked');
 var debug = require('debug')('view-cache');
 var Layouts = require('layouts');
 var Cache = require('config-cache');
@@ -65,35 +66,34 @@ util.inherits(Template, Cache);
 Template.prototype.defaultConfig = function(opts) {
   this.context = {};
 
-  this.set('locals', opts.locals || {});
-  this.set('imports', opts.imports || {});
-
   this.option('cwd', opts.cwd || process.cwd());
-
-  this.set('templates', opts.templates || {});
-  this.option('delims', opts.delims || {});
 
   this.option('layout', opts.layout);
   this.option('layoutTag', opts.layoutTag || 'body');
   this.option('layoutDelims', opts.layoutDelims || ['{{', '}}']);
   this.option('partialLayout', opts.partialLayout);
 
+  this.set('templates', opts.templates || {});
   this.set('layouts', opts.layouts || {});
   this.set('partials', opts.partials || {});
   this.set('pages', opts.pages || {});
 
+  this.set('globals', opts.locals || {});
+  this.set('imports', opts.imports || {});
+
   this.set('helpers', opts.helpers || {});
   this.set('parsers', opts.parsers || {});
-
-  this.set('engines', this.cache.engines || {});
+  this.set('engines', opts.engines || {});
   this.set('view engine', 'noop');
-  this.enable('bindHelpers');
+  this.option('bindHelpers', true);
 
+  this.option('delims', opts.delims || {});
   this.addDelims('default', ['<%', '%>']);
   this.addDelims('es6', ['${', '}'], {
     interpolate: /\$\{([^\\}]*(?:\\.[^\\}]*)*)\}/g
   });
 
+  this._defaultParsers();
   this._defaultEngines();
   this._defaultHelpers();
 };
@@ -110,6 +110,22 @@ Template.prototype.defaultConfig = function(opts) {
 Template.prototype._defaultEngines = function() {
   this.engine('lodash', require('./engines/lodash'));
   this.engine('default', require('./engines/default'));
+};
+
+
+/**
+ * ## ._defaultEngines
+ *
+ * Load default engines
+ *
+ * @api private
+ */
+
+Template.prototype._defaultParsers = function() {
+  this.parser('noop', require('./parsers/noop'));
+  this.parser('md', 'after', function (str, options) {
+    return remarked(str, options);
+  });
 };
 
 
@@ -134,7 +150,7 @@ Template.prototype._defaultHelpers = function (options) {
 
   this.addHelper('partial', function (name, locals, settings) {
     debug('[%s] partial: %s', green('helper'), bold(name));
-    var ctx = _.extend({}, this, locals);
+    var ctx = _.extend({}, this.cache.data, locals);
     var data = self._mergeContext(name, ctx);
     return self.render(name, data, settings);
   });
@@ -250,11 +266,11 @@ Template.prototype.addDelims = function (name, delims, opts) {
  *
  * ```js
  * template.setDelims('curly');
- * template.process('{%= name %}<%= name %>', {name: 'Jon'});
+ * console.log(template.process('{%= name %}<%= name %>', {name: 'Jon'}));
  * //=> 'Jon<%= name %>'
  *
  * template.setDelims('angle');
- * template.process('{%= name %}<%= name %>', {name: 'Jon'});
+ * console.log(template.process('{%= name %}<%= name %>', {name: 'Jon'}));
  * //=> '{%= name %}Jon'
  * ```
  *
@@ -352,22 +368,23 @@ Template.prototype.parse = function (str, options) {
  * @api public
  */
 
-Template.prototype.addParser = function (ext, stage, fn) {
-  if (ext[0] === '.') {
-    ext = ext.replace(/^\./, '');
+Template.prototype.parser = function (ext, stage, fn) {
+  if (ext && ext[0] !== '.') {
+    ext = '.' + ext;
   }
-  if (typeof stage === 'function') {
+  if (typeof stage !== 'string') {
     fn = stage;
-    stage = 'before';
   }
 
   var parsers = this.cache.parsers[ext] || [];
+  var self = this;
+
   fn = arrayify(fn).map(function(parser) {
     if (typeof parser !== 'function') {
       throw new TypeError('Template.parser() exception:', ext);
     }
-    return parser;
-  }.bind(this));
+    return _.bind(parser, self);
+  });
 
   this.cache.parsers[ext] = _.union([], parsers, fn);
   return this;
@@ -384,27 +401,31 @@ Template.prototype.addParser = function (ext, stage, fn) {
  * @api private
  */
 
-Template.prototype._parse = function (filepath, options) {
+Template.prototype._parse = function (str, options) {
   var opts = _.extend({}, options);
-  var ext = opts.ext || path.extname(filepath);
+  var ext = opts.ext || path.extname(opts.filename);
 
-  if (ext[0] === '.') {
-    ext = ext.replace(/^\./, '');
-  }
-  var parsers = this.cache.parsers[ext];
-  if (ext === '.*') {
-    parsers = [this.defaultParser];
+  if (ext && ext[0] !== '.') {
+    ext = '.' + ext;
   }
 
-  // if (parsers && parsers.length) {
-  //   parsers.forEach(function (parser) {
-  //     try {
-  //       file = parser(str, options);
-  //     } catch (err) {
-  //       throw new Error('Template._parse() parsing error:', err));
-  //     }
-  //   });
-  // }
+  var parsers = this.get('parsers');
+  var stack = parsers[ext];
+
+  if (!stack) {
+    stack = parsers['.noop'];
+  }
+
+  if (stack && stack.length) {
+    stack.forEach(function (parser) {
+      try {
+        str = parser(str, options);
+      } catch (err) {
+        throw new Error('Template._parse() parsing error:', err);
+      }
+    });
+  }
+  return str;
 };
 
 
@@ -456,9 +477,9 @@ Template.prototype.engine = function (ext, fn, options) {
  * @api public
  */
 
-Template.prototype.load = function (patterns, options) {
-  var locals = _.extend({}, options);
-  var opts = _.extend({}, this.options, options);
+Template.prototype.load = function (patterns, locals) {
+  var locals = _.extend({}, locals);
+  var opts = _.extend({}, this.options, locals);
 
   this.lazyLayouts(opts);
   var o = {};
@@ -468,13 +489,16 @@ Template.prototype.load = function (patterns, options) {
 
     var name = path.basename(filepath, path.extname(filepath));
     var str = fs.readFileSync(filepath, 'utf8');
-    if (options && options.requireable) {
+    if (locals && locals.requireable) {
       if (this.option('bindHelpers')) {
         o[name] = _.bind(require(path.resolve(filepath)), this);
       } else {
         o[name] = require(path.resolve(filepath));
       }
     } else {
+      var parserOpts = {filename: filepath};
+      str = this._parse(str, _.extend({}, opts, parserOpts));
+
       if (!o.parsed) {
         o[name] = this.parse(str);
       }
@@ -484,9 +508,8 @@ Template.prototype.load = function (patterns, options) {
         o[name].data = _.extend({}, locals, o[name].data);
       }
     }
+    this._mergeContext(name, o);
   }.bind(this));
-
-  this.data(o);
   return o;
 };
 
@@ -502,27 +525,27 @@ Template.prototype.load = function (patterns, options) {
  */
 
 Template.prototype.normalize = function (name, str, locals) {
-  var ctx = _.extend({}, locals);
+  locals = _.extend({}, locals);
   var o = {};
 
   o[name] = {};
-  o[name].locals = ctx;
   o[name].data = {};
 
-  if (!ctx.parsed) {
+  if (!locals.parsed) {
+    str = this._parse(str, opts);
+
     var parsed = this.parse(str);
     o[name] = _.extend({}, o[name], parsed);
   }
 
   // If a property on the context matches the name of
   // the template, extend the data object with that data.
-  _.extend(o[name].data, this._mergeContext(name, {}));
-  _.extend(o[name].data, ctx);
+  o[name].data = this._mergeContext(name, o[name].data);
+
+  _.extend(o[name].data, locals);
 
   o[name].layout = o[name].data.layout;
   delete o[name].data.layout;
-
-  this.data(o);
   return o;
 };
 
@@ -535,16 +558,15 @@ Template.prototype.normalize = function (name, str, locals) {
  *
  * @param  {String} `key` The name of the data object to extend.
  * @param  {Object} `obj` Pass an object to extend wherever the method is used.
- * @param  {String} `type` The type of context being passed in.
  * @api public
  */
 
-Template.prototype._mergeContext = function (key, obj, type) {
-  if (this.cache.data[key] && this.cache.data[key].data) {
-    var data = this.cache.data[key].data;
-    obj = _.extend({}, data, obj);
-  }
-  return obj;
+Template.prototype._mergeContext = function (name, data) {
+  var globals = this.cache.data[name] || {};
+  var self = this;
+
+  data = _.extend({}, globals, data);
+  return data;
 };
 
 
@@ -564,8 +586,7 @@ Template.prototype.partial = function (key, str, locals) {
   debug('registering partials %s:', chalk.magenta(key));
   this.getOne('partials', key);
 
-  var partials = this.normalize(key, str, locals);
-  this.extend('partials', partials);
+  this.extend('partials', this.normalize(key, str, locals));
   return this;
 };
 
@@ -847,6 +868,12 @@ Template.prototype.render = function (name, locals, settings) {
   return this.process(tmpl.content, ctx, settings);
 };
 
+// Template.prototype.render = function (name, locals, settings) {
+//   var tmpl = this.cache.pages[name] || this.cache.partials[name];
+//   var ctx = _.extend({}, locals, tmpl.data);
+//   return this.process(tmpl.content, ctx, settings);
+// };
+
 
 /**
  * Process a template `str` with the given
@@ -863,23 +890,17 @@ Template.prototype.process = function (str, locals, settings) {
   debug('[rendering] template: %s', bold(str.substring(0, 150)));
   settings = _.extend({}, settings);
   locals = _.extend({}, locals);
+  var original = str;
 
   this.lazyLayouts();
 
-  var tmpl = {};
-  if (!locals.parsed) {
-    tmpl = this.parse(str);
-  }
-  locals = _.extend({}, locals);
-  var context = {};
+  var tmpl = this.parse(str);
+  str = tmpl.content;
 
-  _.extend(context, this.cache.data);
-  _.extend(context, locals);
-  _.extend(context, tmpl.data);
+  var ctx = this._context(locals, tmpl.data);
 
-  var delims = this.getDelims(settings.delims || context.delims);
-
-  var ext = context.ext || settings.ext || this.get('view engine');
+  var delims = this.getDelims(settings.delims || ctx.delims);
+  var ext = ctx.ext || this.get('view engine');
   if (ext[0] !== '.') {
     ext = '.' + ext;
   }
@@ -889,33 +910,69 @@ Template.prototype.process = function (str, locals, settings) {
     engine = this.cache.engines['.default'];
   }
 
-  var currentLayout = tmpl.layout || locals.layout;
-  var original = str;
-  var layout;
+  var layout = ctx.layout;
 
-  if (currentLayout) {
-    debug('[building] layout: %s', bold(context.layout));
-    layout = this.layoutCache.inject(tmpl.content, currentLayout, {
-      locals: locals,
-      delims: this.get('layoutDelims'),
-      tag: this.get('layoutTag')
-    });
-
-    debug('[flattened] %j', yellow(layout));
-    context = _.extend({}, context, layout.locals);
+  if (layout) {
+    layout = this.layoutCache.inject(str, layout);
   }
+  layout = layout || {};
 
-  str = (layout && layout.content) || tmpl.content;
+  _.extend(ctx, layout.data);
 
-  settings = _.extend({helpers: this.cache.helpers}, delims);
+  str = layout.content || tmpl.content;
 
+  var helpers = {};
+  // TODO: this should be fixed at the root of wherever it's happening
+  delete this.cache.helpers.data;
+
+  _.forIn(this.cache.helpers, function (value, key) {
+    helpers[key] = value.bind(ctx);
+  });
+
+  // Extend helpers onto settings
+  _.extend(settings, delims, {helpers: helpers});
+
+  // Otherwise, recursively render templates and
+  // return a template string.
   while (this.assertDelims(str, delims)) {
-    str = engine.render(str, context, settings);
+    str = engine.render(str, ctx, settings);
     if (str === original) {
       break;
     }
   }
   return str;
+};
+
+
+/**
+ * Process the context.
+ *
+ * @param  {Object} locals
+ * @param  {Object} matter
+ * @return {Object}
+ */
+
+Template.prototype._context = function (name, locals, matter) {
+  var globals = {};
+
+  if (typeof name !== 'string') {
+    locals = name;
+    matter = locals;
+  }
+
+  locals = locals || {};
+  matter = matter || {};
+
+  if (this.cache.data.hasOwnProperty('globals')) {
+    globals = this.cache.data.globals;
+  }
+
+  if (this.cache.hasOwnProperty('locals')) {
+    globals = _.extend({}, globals, this.cache.locals);
+  }
+
+  var ctx = _.defaults({}, matter, locals, globals);
+  return _.cloneDeep(ctx);
 };
 
 

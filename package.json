@@ -53,6 +53,7 @@
     "gray-matter": "^0.4.2",
     "layouts": "^0.2.2",
     "lodash": "^2.4.1",
-    "lookup-path": "^0.2.0"
+    "lookup-path": "^0.2.0",
+    "remarked": "^0.1.4"
   }
 }
