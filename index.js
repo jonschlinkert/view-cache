@@ -123,9 +123,8 @@ Template.prototype._defaultEngines = function() {
 
 Template.prototype._defaultParsers = function() {
   this.parser('noop', require('./parsers/noop'));
-  this.parser('md', 'after', function (str, options) {
-    return remarked(str, options);
-  });
+  this.parser('hbs', require('./parsers/matter'));
+  this.parser('md', require('./parsers/matter'));
 };
 
 
@@ -321,41 +320,6 @@ Template.prototype.assertDelims = function (str, re) {
 
 
 /**
- * ## .parse
- *
- * Parse a string and extract yaml front matter.
- *
- * **Example:**
- *
- * ```js
- * template.parse('---\ntitle: Home\n---\n<%= title %>');
- * //=> {data: {title: "Home"}, content: "<%= title %>"}}
- * ```
- *
- * @param  {String} `str` The string to parse.
- * @param  {String} `Options` options to pass to [gray-matter].
- * @return {String}
- * @api public
- */
-
-Template.prototype.parse = function (str, options) {
-  if (str && !(options && options.parsed)) {
-    debug('[parse]: %s', bold(str.substring(0, 150)));
-
-    var file = matter(str, _.defaults({
-      autodetect: true
-    }, options));
-
-    file.content = file.content.replace(/^\s*/, '');
-    file.parsed = true;
-
-    return file;
-  }
-  return str;
-};
-
-
-/**
  * ## .parser
  *
  * Register a parser `fn` to be used on each `.src` file. This is used to parse
@@ -401,9 +365,10 @@ Template.prototype.parser = function (ext, stage, fn) {
  * @api private
  */
 
-Template.prototype._parse = function (str, options) {
+Template.prototype.parse = function (str, options) {
   var opts = _.extend({}, options);
   var ext = opts.ext || path.extname(opts.filename);
+  var original = str;
 
   if (ext && ext[0] !== '.') {
     ext = '.' + ext;
@@ -416,16 +381,29 @@ Template.prototype._parse = function (str, options) {
     stack = parsers['.noop'];
   }
 
+  var data = {};
+
   if (stack && stack.length) {
     stack.forEach(function (parser) {
       try {
-        str = parser(str, options);
+        if (typeof str !== 'string') {
+          _.extend(options, str.data);
+          _.extend(data, str.data);
+          str = parser(str.content, options);
+        } else {
+          str = parser(str, options);
+        }
       } catch (err) {
-        throw new Error('Template._parse() parsing error:', err);
+        throw new Error('Template.parse() parsing error:', err);
       }
     });
   }
-  return str;
+
+  return {
+    original: original,
+    content: str,
+    data: data
+  }
 };
 
 
@@ -456,7 +434,7 @@ Template.prototype.engine = function (ext, fn, options) {
   engine.options = fn.options || options || {};
 
   if (typeof engine.render !== 'function') {
-    throw new Error('Template', 'Engines are expected to have a `render` method.');
+    throw new Error('Template engines are expected to have a `render` method.');
   }
 
   if (ext[0] !== '.') {
@@ -496,11 +474,10 @@ Template.prototype.load = function (patterns, locals) {
         o[name] = require(path.resolve(filepath));
       }
     } else {
-      var parserOpts = {filename: filepath};
-      str = this._parse(str, _.extend({}, opts, parserOpts));
 
       if (!o.parsed) {
-        o[name] = this.parse(str);
+        var parserOpts = {filename: filepath};
+        o[name] = this.parse(str, _.extend({}, opts, parserOpts));
       }
       if (locals[name]) {
         o[name].data = _.extend({}, locals[name], o[name].data);
@@ -531,10 +508,8 @@ Template.prototype.normalize = function (name, str, locals) {
   o[name] = {};
   o[name].data = {};
 
-  if (!locals.parsed) {
-    str = this._parse(str, opts);
-
-    var parsed = this.parse(str);
+  if (typeof str === 'string' && !locals.parsed) {
+    var parsed = this.parse(str, opts);
     o[name] = _.extend({}, o[name], parsed);
   }
 
@@ -894,8 +869,11 @@ Template.prototype.process = function (str, locals, settings) {
 
   this.lazyLayouts();
 
-  var tmpl = this.parse(str);
-  str = tmpl.content;
+  var tmpl = {};
+  if (typeof str === 'string' && !locals.parsed) {
+    tmpl = this.parse(str, locals);
+    str = tmpl.content;
+  }
 
   var ctx = this._context(locals, tmpl.data);
 
