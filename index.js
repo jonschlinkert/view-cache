@@ -1,775 +1,468 @@
 /*!
- * template <https://github.com/jonschlinkert/template>
+ * view-cache <https://github.com/jonschlinkert/view-cache>
  *
- * Copyright (c) 2014 Jon Schlinkert, contributors
- * Licensed under the MIT License (MIT)
+ * Copyright (c) 2015, Jon Schlinkert.
+ * Licensed under the MIT License.
  */
 
 'use strict';
 
-var _ = require('lodash');
-var fs = require('fs');
-var path = require('path');
-var util = require('util');
-var chalk = require('chalk');
-var glob = require('globby');
-var arrayify = require('arrayify-compact');
-var matter = require('gray-matter');
-var debug = require('debug')('template');
-var Layouts = require('layouts');
-var Cache = require('config-cache');
-var Delimiters = require('delims');
-var delimiters = new Delimiters();
-
-var yellow = chalk.yellow;
-var green = chalk.green;
-var bold = chalk.bold;
-var gray = chalk.gray;
-var cyan = chalk.cyan;
-
+var utils = require('utils')._;
+var typeOf = require('kind-of');
+var LoaderCache = require('loader-cache');
+var pluralize = require('pluralize');
+var set = require('set-value');
+var get = require('get-value');
 
 /**
- * ## Template
- *
- * Create a new instance of `Template`, optionally passing the default
- * `context` and `options` to use.
- *
- * **Example:**
+ * Create an instance of Views with the given `options`.
  *
  * ```js
- * var Template = require('template');
- * var template = new Template();
+ * var Views = require('views');
+ * var views = new Views();
  * ```
- *
- * @class `Template`
- * @param {Object} `context` Context object to start with.
- * @param {Object} `options` Options to use.
- * @api public
+ * @param {Object} `options`
  */
 
-function Template(options) {
-  Cache.call(this, options);
-  this.extend(options);
-  this.defaultConfig();
+function Views(options) {
+  this.options = options || {};
+  this.cache = this.options.viewCache || {};
+  this.inflections = {};
+  this.types = {};
+  this._ = {};
+  this.init();
 }
 
-util.inherits(Template, Cache);
+Views.prototype.init = function() {
+  this._.loaders = new LoaderCache(this.options.loaders);
+  this.createType('layout');
+  this.createType('renderable');
+  this.createType('partial');
+  this.createType('index');
+};
 
+Views.prototype.createType = function(name) {
+  this.types[name] = this.types[name] || [];
+  return this;
+};
+
+Views.prototype.loader = function() {
+  this._.loaders.compose.apply(this._.loaders, arguments);
+  return this;
+};
+
+Views.prototype.getLoaders = function(name, type) {
+  return this._.loaders.cache[type || 'sync'][name];
+};
+
+Views.prototype.load = function() {
+  this._.loaders.load.apply(this._.loaders, arguments);
+  return this;
+};
 
 /**
- * Initialize default configuration.
+ * Assign `value` to `key` and save to disk. Can be
+ * a key-value pair or an object.
  *
- * @api private
+ * ```js
+ * views.subtypeOptions('pages', 'a', 'b');
+ * // or
+ * views.subtypeOptions('pages', {a: 'b'});
+ * console.log(views.cache.pages.options);
+ * //=> {a: 'b'}
+ * ```
+ * @param {String} `key`
+ * @param {*} `val` The value to save to `key`.
+ * @return {Object} `Views` for chaining
+ * @api public
  */
 
-Template.prototype.defaultConfig = function() {
-  this.set('cwd', this.cache.cwd || process.cwd());
+Views.prototype.subtypeOptions = function(subtype, key, val) {
+  if (typeof val === 'function') {
+    throw new Error('Views#set cannot set functions as values: ' + val.toString());
+  }
 
-  this.set('templates', this.cache.templates || {});
-  this.set('delims', this.cache.delims || {});
+  var plural = this.inflections[subtype];
+  this.options[plural] = this.options[plural] || {};
+  var opts = this.options[plural];
 
-  this.set('layout', this.cache.layout);
-  this.set('layoutDelims', this.cache.layoutDelims || ['{{', '}}']);
-  this.set('layoutTag', this.cache.layoutTag || 'body');
+  if (arguments.length === 2 && typeof key === 'string') {
+    return opts;
+  }
+  if (typeOf(key) === 'object') {
+    utils.merge(opts, key);
+  } else if (typeOf(val) === 'object') {
+    set(opts, key, utils.merge(get(opts, key) || {}, val));
+  } else {
+    set(opts, key, val);
+  }
+  return this;
+};
 
-  this.set('engines', this.cache.engines || {});
-  this.set('pages', this.cache.pages || {});
-  this.set('partials', this.cache.partials || {});
-  this.set('layouts', this.cache.layouts || {});
-  this.set('locals', this.cache.locals || {});
+/**
+ * Create view "types"
+ *
+ * @param  {String} `type` The singular name of the type, e.g. `page`
+ * @param  {String} `plural` The plural name of the type, e.g. `pages.
+ * @return {String}
+ */
 
-  this.set('parsers', this.cache.parsers || {});
-  this.set('helpers', this.cache.helpers || {});
+Views.prototype.create = function (subtype, opts, loaders) {
+  if (Array.isArray(opts) || typeof opts === 'function') {
+    loaders = opts; opts = {};
+  }
+  // decorate this `subtype` with its own get/set methods
+  this.decorate(subtype, pluralize(subtype), opts || {}, loaders || []);
+  return this;
+};
 
-  this.set('view engine', 'noop');
-  this.enable('bindHelpers');
+Views.prototype.decorate = function (subtype, plural, options, stack) {
+  this.inflections[subtype] = plural;
+  this.cache[plural] = this.cache[plural] || {};
+  var loaders = this._.loaders;
 
-  this.addDelims('default', ['<%', '%>']);
-  this.addDelims('es6', ['${', '}'], {
-    interpolate: /\$\{([^\\}]*(?:\\.[^\\}]*)*)\}/g
+  if (stack.length) {
+    loaders.compose(subtype, stack);
+  }
+
+
+  function normalize(name, args, loaders, opts) {
+    loaders = arrayify(loaders);
+    var len = args.length;
+    var last = args[len - 1];
+    var res = [];
+
+    if (Array.isArray(last)) {
+      args = args.slice(0, len - 1);
+      loaders = last.concat(loaders);
+    } else if (typeof last === 'function') {
+      args = args.slice(0, len - 1);
+      loaders = [last].concat(loaders);
+    }
+
+    // while (len--) {
+    //   var ele = args[len];
+    //   // if (Array.isArray(ele)) {
+    //   //   res = res.concat(ele);
+    //   // } else if (typeof ele === 'function') {
+    //   //   res.push(ele);
+    //   // } else {
+    //   //   break;
+    //   // }
+    //   if (Array.isArray(ele)) {
+    //     args = args.slice(0, len - 1);
+    //     loaders = ele.concat(loaders);
+    //   } else if (typeof ele === 'function') {
+    //     args = args.slice(0, len - 1);
+    //     loaders = [ele].concat(loaders);
+    //   } else {
+    //     break;
+    //   }
+    // }
+
+    res.push(args);
+    res.push(loaders);
+    if (typeof opts === 'object') {
+      res.push(opts);
+    }
+    return res;
+  }
+
+  // function create(name, options, loaders) {
+  //   return function () {
+  //     var args = [].slice.call(arguments);
+  //     var res = normalize(name, args, loaders);
+  //     return self.load.apply(self, res);
+  //   }
+  // }
+
+  // var loader = create(plural, getLoader);
+  // console.log(this.getLoaders(subtype))
+
+  //=> '.pages'
+  mixin(plural, function  (key, value, locals, opts) {
+    var args = [].slice.call(arguments);
+    var res = normalize(subtype, args, stack, options);
+    console.log(args)
+    return this.load.apply(this, res);
   });
 
-  this._defaultEngines();
-  this._defaultHelpers();
+  //=> '.page'
+  mixin(subtype, function (/*template*/) {
+    return this[plural].apply(this, arguments);
+  });
+
+  //=> '.getPage'
+  mixin(methodName('get', subtype), function (key) {
+    return this.cache[plural][key];
+  });
+
+  this.subtypeOptions(subtype, options);
 };
 
+function isLoader(val) {
+  return Array.isArray(val) || typeof val === 'function';
+}
 
 /**
- * ## .lazyLayouts
+ * Private method for tracking the `subtypes` created for each
+ * view collection type. This can be used to get/set views
+ * and pass them properly to registered engines. Also creates an
+ * inflection-map between a `subtype` and its `plural` to use
+ * for lookups.
  *
- * Lazily add a `Layout` instance if it has not yet been added.
- * Also normalizes settings to pass to the `layouts` library.
- *
- * We can't instantiate `Layout` in the defaultConfig because
- * it reads settings which might not be set until after init.
- *
+ * @param {String} `plural` e.g. `pages`
+ * @param {Object} `opts`
  * @api private
  */
 
-Template.prototype.lazyLayouts = function(options) {
-  if (!this.layoutCache) {
-    var opts = _.extend({}, options);
+// Views.prototype.setType = function(collection, plural, opts) {
+//   this.inflections[collection] = plural;
+//   if (opts.isIndex) {
+//     this.types.index.push(plural);
+//   }
+//   if (opts.isRenderable) {
+//     this.types.renderable.push(plural);
+//   }
+//   if (opts.isLayout) {
+//     this.types.layout.push(plural);
+//   }
+//   if (opts.isPartial || (!opts.isRenderable && !opts.isLayout && !opts.isIndex)) {
+//     this.types.partial.push(plural);
+//     opts.isPartial = true;
+//   }
+//   return opts;
+// };
 
-    this.layoutCache = new Layouts({
-      locals: opts.locals,
-      layouts: opts.layouts || this.get('layouts'),
-      delims: opts.layoutDelims || this.get('layoutDelims'),
-      tag: opts.layoutTag || this.get('layoutTag')
-    });
-  }
-};
+// Views.prototype._setType = function(subtype, plural) {
+//   return this.views.hasOwnProperty(plural);
+// };
 
+// Views.prototype.pickTypes = function(opts) {
+//   var types = [];
+//   for (var key in this.types) {
+//     var name = getName(key);
+//     if (hasOwn(this.types, key) && hasOwn(opts, name)) {
+//       types.push(name);
+//     }
+//   }
+//   return types;
+// };
+
+// function getName(name) {
+//   return name.substr(2).toLowerCase();
+// }
+
+// Views.prototype.hasType = function(plural) {
+//   return this.views.hasOwnProperty(plural);
+// };
+
+// /**
+//  * Get all view collections of the given `type`. Valid values are
+//  * `renderable`, `layout`, `partial`, or `index`.
+//  *
+//  * ```js
+//  * var pages = views.getType('renderable');
+//  * //=> { pages: { 'home.hbs': { ... }, 'about.hbs': { ... }}, posts: { ... }}
+//  * ```
+//  *
+//  * @param {String} `type` View type to get.
+//  * @api public
+//  */
+
+// Views.prototype.getType = function(type) {
+//   var arr = this.types[type];
+//   var len = arr.length, i = 0;
+//   var res = {};
+
+//   while (len--) {
+//     var plural = arr[i++];
+//     res[plural] = this.views[plural];
+//   }
+//   return res;
+// };
+
+// Views.prototype.hasView = function(plural, key) {
+//   return this.hasType(plural) && this.views[plural].hasOwnProperty(key);
+// };
+
+
+// /**
+//  * Search all `subtype` objects of the given `type`, returning
+//  * the first view found with the given `key`. Optionally pass
+//  * an array of `subtypes` to limit the search;
+//  *
+//  * @param {String} `type` The view type to search.
+//  * @param {String} `key` The view to find.
+//  * @param {Array} `subtypes`
+//  * @api public
+//  */
+
+// Views.prototype.find = function(type, key, subtypes) {
+//   if (typeof type !== 'string') {
+//     throw new TypeError('Views#find() expects `type` to be a string.');
+//   }
+//   var obj = {};
+//   // var arr = Array.isArray(subtypes) ? subtypes : this.types[type];
+//   // var len = arr.length, i = 0;
+
+//   // while (len--) {
+//   //   var collection = arr[i++];
+
+//   // }
+
+//   // if (!obj || !typeOf(obj) === 'object' || !hasOwn(obj, key)) {
+//   //   throw new Error('Cannot find ' + type + ' view: "' + key + '"');
+//   // }
+//   return obj[key];
+// };
+
+// /**
+//  * Search all renderable `subtypes`, returning the first view
+//  * with the given `key`.
+//  *
+//  *   - If `key` is not found an error is thrown.
+//  *   - Optionally limit the search to the specified `subtypes`.
+//  *
+//  * @param {String} `key` The view to search for.
+//  * @param {Array} `subtypes`
+//  * @api public
+//  */
+
+// Views.prototype.findRenderable = function(key, subtypes) {
+//   return this.find('renderable', key, subtypes);
+// };
+
+// /**
+//  * Search all layout `subtypes`, returning the first view
+//  * with the given `key`.
+//  *
+//  *   - If `key` is not found an error is thrown.
+//  *   - Optionally limit the search to the specified `subtypes`.
+//  *
+//  * @param {String} `key` The view to search for.
+//  * @param {Array} `subtypes`
+//  * @api public
+//  */
+
+// Views.prototype.findLayout = function(key, subtypes) {
+//   return this.find('layout', key, subtypes);
+// };
+
+// /**
+//  * Search all partial `subtypes`, returning the first view
+//  * with the given `key`.
+//  *
+//  *   - If `key` is not found an error is thrown.
+//  *   - Optionally limit the search to the specified `subtypes`.
+//  *
+//  * @param {String} `key` The view to search for.
+//  * @param {Array} `subtypes`
+//  * @api public
+//  */
+
+// Views.prototype.findPartial = function(key, subtypes) {
+//   return this.find('partial', key, subtypes);
+// };
+
+// /**
+//  * Search all partial `subtypes`, returning the first view
+//  * with the given `key`.
+//  *
+//  *   - If `key` is not found an error is thrown.
+//  *   - Optionally limit the search to the specified `subtypes`.
+//  *
+//  * @param {String} `key` The view to search for.
+//  * @param {Array} `subtypes`
+//  * @api public
+//  */
+
+// Views.prototype.findIndex = function(key, subtypes) {
+//   return this.find('index', key, subtypes);
+// };
+
+// /**
+//  * Convenience method for finding a view by `name` on
+//  * the given collection. Optionally specify a file extension.
+//  *
+//  * @param {String} `plural` The view collection to search.
+//  * @param {String} `name` The name of the view.
+//  * @param {String} `ext` Optionally pass a file extension to append to `name`
+//  * @api public
+//  */
+
+// Views.prototype.lookup = function(plural, name) {
+//   var views = this.views[plural];
+//   if (!views || !hasOwn(views, name)) {
+//     throw new Error('Cannot find ' + plural + ': "' + name + '"');
+//   }
+//   return views[name];
+// };
 
 /**
- * ## .makeDelims
+ * Add a method to the `Views` prototype.
  *
- * Pass custom delimiters to Lo-Dash.
- *
- * **Example:**
- *
- * ```js
- * template.makeDelims(['{%', '%}'], ['{{', '}}'], opts);
- * ```
- *
- * @param  {Array} `delims` Array of delimiters.
- * @param  {Array} `layoutDelims` layout-specific delimiters to use. Default is `['{{', '}}']`.
- * @param  {Object} `options` Options to pass to [delims].
+ * @param  {String} `method` The method name.
+ * @param  {Function} `fn`
  * @api private
  */
 
-Template.prototype.makeDelims = function (delims, options) {
-  var opts = _.defaults({escape: true}, options);
-  return _.extend(delimiters.templates(delims, opts), options);
-};
-
+function mixin(method, fn) {
+  Views.prototype[method] = fn;
+}
 
 /**
- * ## .addDelims
+ * Utility for getting an own property from an object.
  *
- * Store delimiters by `name` with the given `options` for later use.
- *
- * **Example:**
- *
- * ```js
- * template.addDelims('curly', ['{%', '%}']);
- * template.addDelims('angle', ['<%', '%>']);
- * template.addDelims('es6', ['${', '}'], {
- *   // override the generated regex
- *   interpolate: /\$\{([^\\}]*(?:\\.[^\\}]*)*)\}/g
- * });
- * ```
- *
- * [delims]: https://github.com/jonschlinkert/delims "Generate regex for delimiters"
- *
- * @param {String} `name` The name to use for the stored delimiters.
- * @param {Array} `delims` Array of delimiter strings. See [delims] for details.
- * @param {Object} `opts` Options to pass to [delims].
- * @api public
- */
-
-Template.prototype.addDelims = function (name, delims, opts) {
-  debug('adding delimiters %s: %j', chalk.magenta(name), delims);
-
-  var settings = _.defaults({}, opts, this.makeDelims(delims, opts));
-  this.extend('delims.' + name, settings);
-  return this;
-};
-
-
-/**
- * ## .setDelims
- *
- * User-defined template delimiters to use.
- *
- * ```js
- * template.setDelims('curly');
- * console.log(template.process('{%= name %}<%= name %>', {name: 'Jon'}));
- * //=> 'Jon<%= name %>'
- *
- * template.setDelims('angle');
- * console.log(template.process('{%= name %}<%= name %>', {name: 'Jon'}));
- * //=> '{%= name %}Jon'
- * ```
- *
- * @param {String} `name`
- * @api public
- */
-
-Template.prototype.setDelims = function(name) {
-  return this.currentDelims = name;
-};
-
-
-/**
- * ## .getDelims
- *
- * The `name` of the stored delimiters to pass to the current template engine.
- * The engine must support custom delimiters for this to work.
- *
- * @param  {Array} `name` The name of the stored delimiters to pass.
- * @api private
- */
-
-Template.prototype.getDelims = function(name) {
-  if(this.cache.delims.hasOwnProperty(name)) {
-    return this.cache.delims[name];
-  }
-  name = this.currentDelims || 'default';
-  return this.cache.delims[name];
-};
-
-
-/**
- * ## .engine
- *
- * Register the given view engine callback `fn` as `ext`.
- *
- * {%= docs("api-engine") %}
- *
- * @param {String} `ext`
- * @param {Function|Object} `fn` or `options`
- * @param {Object} `options`
- * @return {Template} for chaining
- * @api public
- */
-
-Template.prototype.engine = function (ext, fn, options) {
-  var engine = {};
-  if (typeof fn === 'function') {
-    engine.renderFile = fn;
-    engine.render = fn.render;
-  } else if (typeof fn === 'object') {
-    engine = fn;
-    engine.renderFile = fn.renderFile || fn.__express;
-  }
-
-  engine.options = fn.options || options || {};
-
-  if (typeof engine.render !== 'function') {
-    throw new Error('Template', 'Engines are expected to have a `render` method.');
-  }
-
-  if (ext[0] !== '.') {
-    ext = '.' + ext;
-  }
-  this.cache.engines[ext] = engine;
-
-  // var lang = language.lang(ext.replace(/^\./, ''));
-
-  // // if the language has mapped delimiters, create a layout stack.
-  // if (/md/.test(ext) || (delimiterMap(lang) && delimiterMap(lang).length)) {
-
-  //   // Get the layout delimiters to use for the current engine.
-  //   var getEngineDelims = utils.engineDelims(ext);
-
-  //   // Create a `Layout` instance for this engine
-  //   var layoutOpts = extend({}, {delims: getEngineDelims}, options);
-  //   this._layouts[ext] = new Layouts(layoutOpts);
-  // }
-  return this;
-};
-
-
-/**
- * ## .addHelper
- *
- * Add a custom template helper.
- *
- * **Example:**
- *
- * ```js
- * template.addHelper('include', function(filepath) {
- *   return fs.readFileSync(filepath, 'utf8');
- * });
- * ```
- * **Usage:**
- *
- * ```js
- * template.process('<%= include("foo.md") %>');
- * ```
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.addHelper = function (key, value) {
-  debug('register helper %s', chalk.magenta(key));
-
-  if (this.enabled('bindHelpers')) {
-    this.cache.helpers[key] = _.bind(value, this);
-  } else {
-    this.cache.helpers[key] = value;
-  }
-  return this;
-};
-
-
-/**
- * ## .addHelpers
- *
- * Add an array or glob of template helpers. When this
- * method is used, each helper's name is derived from
- * the basename the file.
- *
- * **Example:**
- *
- * ```js
- * template.addHelpers('helpers/*.js');
- * ```
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.addHelpers = function (pattern, options) {
-  debug('registering helpers %s:', chalk.magenta(pattern));
-
-  var opts = _.extend({requireable: true}, options);
-  this.extend('helpers', this.load(pattern, opts));
-  return this;
-};
-
-
-/**
- * ## ._defaultHelpers
- *
- * Load default helpers onto the cache.
- *
- * @api private
- */
-
-Template.prototype._defaultHelpers = function () {
-  this.addHelper('partial', function (name, locals) {
-    debug('%s [loading] partial %s:', green('helper'), bold(name));
-
-    var partial = this.cache.partials[name];
-    if (partial) {
-      var ctx = _.extend({}, partial.data, locals);
-      return this.process(partial.content, ctx);
-    }
-  }.bind(this));
-};
-
-
-Template.prototype._defaultEngines = function() {
-  this.engine('default', require('./engines/default'));
-};
-
-/**
- * ## .load
- *
- * Read a glob of files, parse them and return objects.
- *
- * @param  {String} `patterns` Glob patterns to use.
- * @param  {Object} `options` Options to pass to [globby].
- * @api public
- */
-
-Template.prototype.load = function (patterns, options) {
-  var obj = {};
-
-  glob.sync(patterns, options).forEach(function (filepath) {
-    debug('loading %s', chalk.magenta(filepath));
-
-    var name = path.basename(filepath, path.extname(filepath));
-    var str = fs.readFileSync(filepath, 'utf8');
-    if (options && options.requireable) {
-      if (this.enabled('bindHelpers')) {
-        obj[name] = _.bind(require(path.resolve(filepath)), this);
-      } else {
-        obj[name] = require(path.resolve(filepath));
-      }
-    } else {
-      obj[name] = this.parse(str);
-    }
-  }.bind(this));
-  return obj;
-};
-
-
-/**
- * ## .loadTemplate
- *
- * Add an object of loadTemplate to `cache[name]`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.loadTemplate = function (name, isLayout) {
-  this.lazyLayouts();
-  var self = this;
-
-  this.cache[name] = this.cache[name] || {};
-
-  return function (key, str, locals) {
-    var args = [].slice.call(arguments).filter(Boolean);
-    var arity = args.length;
-
-    locals = locals || {};
-
-    if (arity === 1) {
-      // If only one arg is passed and it's an object,
-      // merge it onto the cache
-      if (typeof key === 'object') {
-        debug('[adding] %ss: %j', gray(name), Object.keys(key));
-        key.locals = locals;
-        if (isLayout) {
-          self.setLayout(key);
-        } else {
-          locals.layout = locals.layout || global.layout;
-        }
-        self.extend(name, key);
-        return self;
-      }
-      // If only one arg is passed, and it's a string,
-      // return the named template from the cache
-      return self.cache[name][key];
-    }
-
-    debug('[adding] %s: %s', gray(name), key);
-
-    if (typeof key === 'string' && typeof str === 'string') {
-      self.cache[name][key] = self.parse(str);
-    } else {
-      self.cache[name][key] = str;
-    }
-
-    self.cache[name][key].locals = locals;
-    self.cache[name][key].layout = locals.layout;
-    delete self.cache[name][key].locals.layout;
-
-    if (isLayout) {
-      self.setLayout(self.cache.layouts);
-    }
-  };
-
-  return this;
-};
-
-
-/**
- * ## .partials
- *
- * Add an object of partials to `cache.partials`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.loadTemplates = function (name, isLayout, patterns, options) {
-  var opts = _.extend({}, options);
-  this.lazyLayouts();
-
-  this.cache[name] = this.cache[name] || {};
-
-  if (arguments.length > 0) {
-    try {
-      var isGlob = (typeof patterns === 'string' || Array.isArray(patterns));
-      if (isGlob) {
-        debug('[loading] %s: %s', gray(name), patterns);
-        patterns = this.load(patterns, opts);
-      }
-
-      var isObject = (typeof patterns === 'object' && !Array.isArray(patterns));
-      if (isObject) {
-        debug('[registering] %s object: %j', gray(name), patterns);
-
-        _.forIn(patterns, function (value, key) {
-          if (value && typeof value === 'string') {
-            value = this.parse(value);
-          }
-          this.cache[name][key] = value;
-          if (isLayout) {
-            this.setLayout(this.cache[name][key]);
-          }
-        }.bind(this));
-        return this;
-      }
-    } catch (err) {
-      throw new Error('loadTemplates', err);
-    }
-  }
-
-  return this.cache[name];
-};
-
-
-/**
- * ## .partial
- *
- * Add a partial to `cache.partials`.
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.partial = function (key, str, locals) {
-  if (arguments.length === 1 && typeof key === 'string') {
-    return this.cache.partials[key];
-  }
-  this.loadTemplate('partials', false)(key, str, locals);
-};
-
-
-/**
- * ## .partials
- *
- * Add an object of partials to `cache.partials`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.partials = function (patterns, options) {
-  this.loadTemplates('partials', false, patterns, options);
-  return this;
-};
-
-
-/**
- * ## .page
- *
- * Add a page to `cache.pages`.
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.page = function (key, str, locals) {
-  if (arguments.length === 1 && typeof key === 'string') {
-    return this.cache.pages[key];
-  }
-  this.loadTemplate('pages', false)(key, str, locals);
-};
-
-
-/**
- * ## .pages
- *
- * Add an object of pages to `cache.pages`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.pages = function (patterns, options) {
-  this.loadTemplates('pages', false, patterns, options);
-  return this;
-};
-
-
-/**
- * ## .setLayout
- *
- * Proxy for `layoutCache.setLayout`.
- *
- * @api private
- */
-
-Template.prototype.setLayout = function(obj) {
-  this.layoutCache.setLayout(obj);
-};
-
-
-/**
- * ## .layout
- *
- * Add a layout to `cache.layouts`.
- *
- * @param  {String} `key`
- * @param  {Object} `value`
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.layout = function (key, str, locals) {
-  if (arguments.length === 1 && typeof key === 'string') {
-    return this.cache.layouts[key];
-  }
-  this.loadTemplate('layouts', true)(key, str, locals);
-};
-
-
-/**
- * ## .layouts
- *
- * Add an object of layouts to `cache.layouts`.
- *
- * @param {Arguments}
- * @return {Template} to enable chaining.
- * @chainable
- * @api public
- */
-
-Template.prototype.layouts = function (patterns, options) {
-  this.loadTemplates('layouts', true, patterns, options);
-  return this;
-};
-
-
-/**
- * ## .assertDelims
- *
- * Return `true` if template delimiters exist in `str`.
- *
- * @param  {String} `str`
+ * @param  {Object} `o`
+ * @param  {Object} `prop`
  * @return {Boolean}
- * @api private
+ * @api true
  */
 
-Template.prototype.assertDelims = function (str, re) {
-  return re ? str.indexOf(re.delims[0]) !== -1 &&
-    str.indexOf(re.delims[1]) !== -1 :
-    str.indexOf('<%') !== -1 ||
-    str.indexOf('${') !== -1;
-};
-
+function hasOwn(o, prop) {
+  return {}.hasOwnProperty.call(o, prop);
+}
 
 /**
- * ## .parse
+ * Coerce val to an array.
+ */
+
+function arrayify(val) {
+  return Array.isArray(val) ? val : [val];
+}
+
+/**
+ * Create a camel-cased method name for the given
+ * `method` and `type`.
  *
- * Parse a string and extract yaml front matter.
+ *     'get' + 'page' => `getPage`
  *
- * **Example:**
- *
- * ```js
- * template.parse('---\ntitle: Home\n---\n<%= title %>');
- * //=> {data: {title: "Home"}, content: "<%= title %>"}}
- * ```
- *
- * @param  {String} `str` The string to parse.
- * @param  {String} `Options` options to pass to [gray-matter].
+ * @param  {String} `type`
+ * @param  {String} `name`
  * @return {String}
- * @api public
  */
 
-Template.prototype.parse = function (str, options) {
-  return matter(str, _.extend({autodetect: true}, options));
-};
-
+function methodName(method, type) {
+  return camelcase(method)
+    + type.charAt(0).toUpperCase()
+    + type.slice(1);
+}
 
 /**
- * ## .renderFile
+ * Camemlcase the given string.
  *
- * Render a template `str` with the given `locals` and `options`.
- *
- * @param  {Object} `locals` Data to pass to registered view engines.
- * @param  {Object} `options` Options to pass to registered view engines.
+ * @param  {String} str
  * @return {String}
- * @api public
  */
 
-Template.prototype.processFile = function (filepath, locals, settings) {
-  return this.process(fs.readFileSync(filepath, 'utf8'), locals, settings);
-};
+function camelcase(str) {
+  if (str.length === 1) { return str; }
+  str = str.replace(/^[-_.\s]+/, '').toLowerCase();
+  return str.replace(/[-_.]+(\w|$)/g, function (_, ch) {
+    return ch.toUpperCase();
+  });
+}
 
 
-/**
- * ## .render
- *
- * Render a template `str` with the given `locals` and `options`.
- *
- * @param  {Object} `locals` Data to pass to registered view engines.
- * @param  {Object} `options` Options to pass to registered view engines.
- * @return {String}
- * @api public
- */
-
-Template.prototype.process = function (str, locals, settings) {
-  return this.render(str, locals, settings);
-};
-
-
-/**
- * ## .render
- *
- * Process a template `str` with the given `locals` and `settings`.
- *
- * @param  {String} `str` The template string.
- * @param  {Object} `locals` Optionally pass locals to use as context.
- * @param  {Object} `settings` Optionally pass the template delimiters to use.
- * @return {String}
- * @api public
- */
-
-Template.prototype.render = function (str, locals, settings) {
-  debug('[rendering] template: %s', bold(str.substring(0, 150)));
-  this.lazyLayouts();
-
-  var tmpl = this.parse(str);
-  locals = _.extend({}, locals);
-  var data = {};
-
-  _.extend(data, this.cache.locals);
-  _.extend(data, this.cache.data);
-  _.extend(data, locals);
-  _.extend(data, tmpl.data);
-  _.extend(this.cache.locals, data);
-
-  settings = _.extend({}, settings);
-  var delims = this.getDelims(settings.delims || data.delims);
-
-  var ext = data.ext || settings.ext || this.get('view engine');
-  if (ext[0] !== '.') {
-    ext = '.' + ext;
-  }
-  var engine = this.get(['engines', ext]);
-  if (!engine) {
-    engine = this.cache.engines['.default'];
-  }
-  var currentLayout = tmpl.layout || locals.layout;
-  var original = str;
-  var layout;
-
-  if (currentLayout) {
-    debug('[building] layout: %s', bold(data.layout));
-    layout = this.layoutCache.inject(tmpl.content, currentLayout, {
-      locals: locals,
-      delims: this.get('layoutDelims'),
-      tag: this.get('layoutTag')
-    });
-
-    debug('[flattened] %j', yellow(layout));
-    data = _.extend({}, data, layout.locals);
-  }
-  str = (layout && layout.content) || tmpl.content;
-
-  settings = _.extend({helpers: this.cache.helpers}, delims);
-  while (this.assertDelims(str, delims)) {
-    data.settings = settings;
-    str = engine.render(str, data);
-    if (str === original) {
-      break;
-    }
-  }
-  return str;
-};
-
-
-/**
- * Expose `Template`
- */
-
-module.exports = Template;
+module.exports = Views;
