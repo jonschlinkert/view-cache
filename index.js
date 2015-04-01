@@ -86,10 +86,6 @@ Views.prototype.load = {
  */
 
 Views.prototype.subtypeOptions = function(subtype, key, val) {
-  if (typeof val === 'function') {
-    throw new Error('Views#set cannot set functions as values: ' + val.toString());
-  }
-
   var plural = this.inflections[subtype];
   this.options[plural] = this.options[plural] || {};
   var opts = this.options[plural];
